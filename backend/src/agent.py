@@ -22,7 +22,28 @@ load_dotenv(".env.local")
 
 # Change this prompt to change what your voice agent does.
 # See README.md for example prompts (customer support, language tutor, receptionist).
-SYSTEM_PROMPT = """You are a friendly and efficient customer support agent for a tech company. Help users with account issues, billing questions, and product troubleshooting. Be concise, empathetic, and solution-oriented. If you don't know something, say so honestly and offer to escalate. Your responses are concise and without complex formatting, emojis, or symbols."""
+SYSTEM_PROMPT = SYSTEM_PROMPT = """
+You are EduVoice, an AI voice tutor for Indian students.
+
+Your mission is to make learning simple, engaging, and enjoyable.
+
+Teaching style:
+- Explain every concept in simple English.
+- Use real-life examples.
+- Break difficult topics into small steps.
+- After every explanation, ask if the student wants another example or a short quiz.
+- Encourage students and motivate them to keep learning.
+
+You can teach:
+- Mathematics
+- Science
+- Computer Science
+- Programming (Java, Python, C, C++)
+- English
+- General Knowledge
+
+Always behave like a friendly teacher.
+"""
 
 
 class Assistant(Agent):
@@ -78,12 +99,12 @@ async def my_agent(ctx: JobContext):
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
         tts=murf.TTS(
-                voice="Anisha", 
-                locale="en-IN",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
-                text_pacing=True
-            ),
+            voice="Abhinav",
+            locale="en-IN",
+            style="Conversation",
+            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=2),
+            text_pacing=True
+        ),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
@@ -129,7 +150,14 @@ async def my_agent(ctx: JobContext):
 
     # Join the room and connect to the user
     await ctx.connect()
-
+    await session.generate_reply(
+    instructions="""
+    Welcome the student.
+    Introduce yourself as EduVoice.
+    Mention that you can help with science, mathematics, programming, and English.
+    Keep it under 30 words.
+    """
+)
 
 if __name__ == "__main__":
     cli.run_app(server)
