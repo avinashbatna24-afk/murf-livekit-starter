@@ -9,6 +9,7 @@ import {
   type AgentControlBarControls,
 } from '@/components/agents-ui/agent-control-bar';
 import { Shimmer } from '@/components/ai-elements/shimmer';
+import { EduStateBanner } from '@/components/app/edu-state-banner';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
 
@@ -39,18 +40,11 @@ const CHAT_MOTION_PROPS: MotionProps = {
   variants: {
     hidden: {
       opacity: 0,
-      transition: {
-        ease: 'easeOut',
-        duration: 0.3,
-      },
+      transition: { ease: 'easeOut', duration: 0.3 },
     },
     visible: {
       opacity: 1,
-      transition: {
-        delay: 0.2,
-        ease: 'easeOut',
-        duration: 0.3,
-      },
+      transition: { delay: 0.2, ease: 'easeOut', duration: 0.3 },
     },
   },
   initial: 'hidden',
@@ -62,19 +56,11 @@ const SHIMMER_MOTION_PROPS: MotionProps = {
   variants: {
     visible: {
       opacity: 1,
-      transition: {
-        ease: 'easeIn',
-        duration: 0.5,
-        delay: 0.8,
-      },
+      transition: { ease: 'easeIn', duration: 0.5, delay: 0.8 },
     },
     hidden: {
       opacity: 0,
-      transition: {
-        ease: 'easeIn',
-        duration: 0.5,
-        delay: 0,
-      },
+      transition: { ease: 'easeIn', duration: 0.5, delay: 0 },
     },
   },
   initial: 'hidden',
@@ -104,62 +90,65 @@ export function Fade({ top = false, bottom = false, className }: FadeProps) {
 export interface AgentSessionView_01Props {
   /**
    * Message shown above the controls before the first chat message is sent.
-   *
-   * @default 'Agent is listening, ask it a question'
+   * @default 'Ask me anything — speak in Telugu or English!'
    */
   preConnectMessage?: string;
-  /**
-   * Enables or disables the chat toggle and transcript input controls.
-   *
-   * @default true
-   */
+  /** Enables or disables the chat toggle and transcript input controls. @default true */
   supportsChatInput?: boolean;
-  /**
-   * Enables or disables camera controls in the bottom control bar.
-   *
-   * @default true
-   */
+  /** Enables or disables camera controls in the bottom control bar. @default false */
   supportsVideoInput?: boolean;
-  /**
-   * Enables or disables screen sharing controls in the bottom control bar.
-   *
-   * @default true
-   */
+  /** Enables or disables screen sharing controls in the bottom control bar. @default false */
   supportsScreenShare?: boolean;
-  /**
-   * Shows a pre-connect buffer state with a shimmer message before messages appear.
-   *
-   * @default true
-   */
+  /** Shows a pre-connect buffer state with a shimmer message before messages appear. @default true */
   isPreConnectBufferEnabled?: boolean;
 
-  /** Selects the visualizer style rendered in the main tile area. */
   audioVisualizerType?: 'bar' | 'wave' | 'grid' | 'radial' | 'aura';
-  /** Primary hex color used by supported audio visualizer variants. */
   audioVisualizerColor?: `#${string}`;
-  /** Hue shift intensity used by certain visualizers. */
   audioVisualizerColorShift?: number;
-  /** Number of bars to render when `audioVisualizerType` is `bar`. */
   audioVisualizerBarCount?: number;
-  /** Number of rows in the visualizer when `audioVisualizerType` is `grid`. */
   audioVisualizerGridRowCount?: number;
-  /** Number of columns in the visualizer when `audioVisualizerType` is `grid`. */
   audioVisualizerGridColumnCount?: number;
-  /** Number of radial bars when `audioVisualizerType` is `radial`. */
   audioVisualizerRadialBarCount?: number;
-  /** Base radius of the radial visualizer when `audioVisualizerType` is `radial`. */
   audioVisualizerRadialRadius?: number;
-  /** Stroke width of the wave path when `audioVisualizerType` is `wave`. */
   audioVisualizerWaveLineWidth?: number;
-  /** Optional class name merged onto the outer `<section>` container. */
+  /** Called just before the session ends via the user's END CALL button. */
+  onUserEnd?: () => void;
   className?: string;
 }
 
+/** Detect if the user has blocked microphone permissions */
+function useMicPermission() {
+  const [micBlocked, setMicBlocked] = useState(false);
+
+  useEffect(() => {
+    let permStatus: PermissionStatus | null = null;
+
+    const check = async () => {
+      try {
+        permStatus = await navigator.permissions.query({ name: 'microphone' } as PermissionDescriptor);
+        setMicBlocked(permStatus.state === 'denied');
+        permStatus.onchange = () => {
+          setMicBlocked(permStatus?.state === 'denied');
+        };
+      } catch {
+        // Permissions API not supported — ignore
+      }
+    };
+
+    check();
+    return () => {
+      if (permStatus) permStatus.onchange = null;
+    };
+  }, []);
+
+  return micBlocked;
+}
+
 export function AgentSessionView_01({
-  preConnectMessage = 'Agent is listening, ask it a question',
+  preConnectMessage = 'Ask me anything — speak in Telugu or English!',
   supportsChatInput = true,
-  supportsVideoInput = true,
-  supportsScreenShare = true,
+  supportsVideoInput = false,
+  supportsScreenShare = false,
   isPreConnectBufferEnabled = true,
 
   audioVisualizerType,
@@ -171,6 +160,7 @@ export function AgentSessionView_01({
   audioVisualizerRadialBarCount,
   audioVisualizerRadialRadius,
   audioVisualizerWaveLineWidth,
+  onUserEnd,
   ref,
   className,
   ...props
@@ -180,6 +170,7 @@ export function AgentSessionView_01({
   const [chatOpen, setChatOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
+  const micBlocked = useMicPermission();
 
   const controls: AgentControlBarControls = {
     leave: true,
@@ -192,7 +183,6 @@ export function AgentSessionView_01({
   useEffect(() => {
     const lastMessage = messages.at(-1);
     const lastMessageIsLocal = lastMessage?.from?.isLocal === true;
-
     if (scrollAreaRef.current && lastMessageIsLocal) {
       scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
     }
@@ -205,8 +195,32 @@ export function AgentSessionView_01({
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
-      {/* transcript */}
 
+
+      {/* Microphone blocked — full-width error bar */}
+      <AnimatePresence>
+        {micBlocked && (
+          <motion.div
+            initial={{ opacity: 0, y: -40 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -40 }}
+            transition={{ duration: 0.35 }}
+            className="absolute top-0 left-0 right-0 z-30 flex items-center justify-center gap-3 border-b border-red-500/30 bg-red-950/70 px-4 py-3 backdrop-blur-md"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 text-red-400">
+              <path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z" fill="currentColor"/>
+            </svg>
+            <div className="text-center">
+              <p className="text-sm font-bold text-red-300">Microphone access blocked</p>
+              <p className="text-xs text-red-400/80">
+                Click the lock icon in your browser address bar → allow microphone → refresh the page
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Transcript */}
       <div className="absolute top-0 bottom-[135px] flex w-full flex-col md:bottom-[170px]">
         <AnimatePresence>
           {chatOpen && (
@@ -223,9 +237,12 @@ export function AgentSessionView_01({
           )}
         </AnimatePresence>
       </div>
-      {/* Tile layout */}
+
+      {/* Audio visualiser tile + state banner */}
       <TileLayout
         chatOpen={chatOpen}
+        agentState={agentState}
+        micBlocked={micBlocked}
         audioVisualizerType={audioVisualizerType}
         audioVisualizerColor={audioVisualizerColor}
         audioVisualizerColorShift={audioVisualizerColorShift}
@@ -236,7 +253,8 @@ export function AgentSessionView_01({
         audioVisualizerGridColumnCount={audioVisualizerGridColumnCount}
         audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
       />
-      {/* Bottom */}
+
+      {/* Bottom controls */}
       <motion.div
         {...BOTTOM_VIEW_MOTION_PROPS}
         className="absolute inset-x-3 bottom-0 z-50 md:inset-x-12"
@@ -250,13 +268,14 @@ export function AgentSessionView_01({
                 duration={2}
                 aria-hidden={messages.length > 0}
                 {...SHIMMER_MOTION_PROPS}
-                className="pointer-events-none mx-auto block w-full max-w-2xl pb-4 text-center text-sm font-semibold"
+                className="pointer-events-none mx-auto block w-full max-w-2xl pb-4 text-center text-sm font-semibold text-white/50"
               >
                 {preConnectMessage}
               </MotionMessage>
             )}
           </AnimatePresence>
         )}
+
         <div className="bg-background relative mx-auto max-w-2xl pb-3 md:pb-12">
           <Fade bottom className="absolute inset-x-0 top-0 h-4 -translate-y-full" />
           <AgentControlBar
@@ -264,7 +283,10 @@ export function AgentSessionView_01({
             controls={controls}
             isChatOpen={chatOpen}
             isConnected={session.isConnected}
-            onDisconnect={session.end}
+            onDisconnect={() => {
+              onUserEnd?.();
+              session.end();
+            }}
             onIsChatOpenChange={setChatOpen}
           />
         </div>

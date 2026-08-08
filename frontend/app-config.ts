@@ -33,40 +33,34 @@ export interface AppConfig {
 }
 
 export const APP_CONFIG_DEFAULTS: AppConfig = {
-  companyName: 'Murf AI',
-  pageTitle: 'Voice Agent Starter',
-  pageDescription: 'A voice agent powered by Murf Falcon — the fastest TTS API',
+  // ── EduVoice Branding ───────────────────────────────────────────────
+  companyName: 'EduVoice',
+  pageTitle: 'EduVoice — AI Voice Tutor for Indian Students',
+  pageDescription:
+    'Learn Maths, Science, Programming & English with EduVoice — your AI tutor powered by Murf Falcon, the fastest TTS API. Speak in Telugu, English, or both!',
 
-  supportsChatInput: true,
-  supportsVideoInput: true,
-  supportsScreenShare: true,
+  // ── Feature flags ───────────────────────────────────────────────────
+  supportsChatInput: true,   // keep live transcript
+  supportsVideoInput: false, // no camera needed for voice tutor
+  supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
 
+  // ── Visual identity ─────────────────────────────────────────────────
   logo: '/murf-logo.svg',
-  accent: '#6366F1',
   logoDark: '/murf-logo-dark.svg',
-  accentDark: '#818cf8',
-  startButtonText: 'Start talking',
+  accent: '#F97316',        // saffron
+  accentDark: '#FDBA74',    // lighter saffron for dark
+  startButtonText: 'Start Learning',
 
-  // optional: audio visualization configuration
-  // audioVisualizerType: 'bar',
-  // audioVisualizerColor: '#002cf2',
-  // audioVisualizerColorDark: '#1fd5f9',
-  // audioVisualizerColorShift: 0.3,
-  // audioVisualizerBarCount: 5,
-  // audioVisualizerType: 'radial',
-  // audioVisualizerRadialBarCount: 24,
-  // audioVisualizerRadialRadius: 100,
-  // audioVisualizerType: 'grid',
-  // audioVisualizerGridRowCount: 25,
-  // audioVisualizerGridColumnCount: 25,
-  // audioVisualizerType: 'wave',
-  // audioVisualizerWaveLineWidth: 3,
-  // audioVisualizerType: 'aura',
+  // ── Audio visualiser — aura style in saffron/indigo ─────────────────
+  audioVisualizerType: 'aura',
+  audioVisualizerColor: '#F97316',
+  audioVisualizerColorDark: '#FDBA74',
+  audioVisualizerColorShift: 0.4,
 
-  // agent dispatch configuration
+  // ── Agent dispatch ──────────────────────────────────────────────────
   agentName: process.env.AGENT_NAME ?? undefined,
 
-  // LiveKit Cloud Sandbox configuration
+  // ── LiveKit Cloud Sandbox ───────────────────────────────────────────
   sandboxId: undefined,
 };

@@ -54,7 +54,7 @@ export function AudioVisualizer({
           audioTrack={audioTrack}
           color={audioVisualizerColor}
           colorShift={audioVisualizerColorShift}
-          className={cn('size-[300px] md:size-[450px]', className)}
+          className={cn('size-[180px] md:size-[220px]', className)}
           {...props}
         />
       );

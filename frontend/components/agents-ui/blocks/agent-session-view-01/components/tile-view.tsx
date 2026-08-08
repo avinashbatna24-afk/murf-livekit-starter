@@ -7,7 +7,9 @@ import {
   useLocalParticipant,
   useTracks,
   useVoiceAssistant,
+  type AgentState,
 } from '@livekit/components-react';
+import { EduStateBanner } from '@/components/app/edu-state-banner';
 import { cn } from '@/lib/shadcn/utils';
 import { AudioVisualizer } from './audio-visualizer';
 
@@ -69,6 +71,8 @@ export function useLocalTrackRef(source: Track.Source) {
 
 interface TileLayoutProps {
   chatOpen: boolean;
+  agentState?: AgentState;
+  micBlocked?: boolean;
   audioVisualizerType?: 'bar' | 'wave' | 'grid' | 'radial' | 'aura';
   audioVisualizerColor?: `#${string}`;
   audioVisualizerColorShift?: number;
@@ -82,6 +86,8 @@ interface TileLayoutProps {
 
 export function TileLayout({
   chatOpen,
+  agentState,
+  micBlocked = false,
   audioVisualizerType,
   audioVisualizerColor,
   audioVisualizerColorShift,
@@ -106,7 +112,7 @@ export function TileLayout({
   const videoHeight = agentVideoTrack?.publication.dimensions?.height ?? 0;
 
   return (
-    <div className="absolute inset-x-0 top-8 bottom-32 z-50 md:top-12 md:bottom-40">
+    <div className="absolute inset-x-0 top-28 bottom-32 z-40 md:top-36 md:bottom-40">
       <div className="relative mx-auto h-full max-w-2xl px-4 md:px-0">
         <div className={cn(tileViewClassNames.grid)}>
           {/* Agent */}
@@ -120,7 +126,7 @@ export function TileLayout({
           >
             <AnimatePresence mode="popLayout">
               {!isAvatar && (
-                // Audio Agent
+                // Audio Agent — visualizer + state label stacked
                 <motion.div
                   key="agent"
                   layoutId="agent"
@@ -130,7 +136,10 @@ export function TileLayout({
                     ...ANIMATION_TRANSITION,
                     delay: animationDelay,
                   }}
-                  className={cn('relative aspect-square h-[90px]')}
+                  className={cn(
+                    'relative flex flex-col items-center gap-4',
+                    chatOpen ? 'aspect-square h-[90px]' : 'aspect-auto h-auto'
+                  )}
                 >
                   <AudioVisualizer
                     key="audio-visualizer"
@@ -151,12 +160,18 @@ export function TileLayout({
                     audioVisualizerWaveLineWidth={audioVisualizerWaveLineWidth}
                     isChatOpen={chatOpen}
                     className={cn(
-                      'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
                       'bg-background rounded-[50px] border border-transparent transition-[border,drop-shadow]',
                       chatOpen && 'border-input shadow-2xl/10 delay-200'
                     )}
                     style={{ color: audioVisualizerColor }}
                   />
+
+                  {/* State label — directly below the visualizer */}
+                  {!chatOpen && (
+                    <div className="flex flex-col items-center gap-2">
+                      <EduStateBanner agentState={agentState} micBlocked={micBlocked} />
+                    </div>
+                  )}
                 </motion.div>
               )}
 

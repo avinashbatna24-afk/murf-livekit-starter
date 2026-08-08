@@ -35,9 +35,13 @@ export async function POST(req: Request) {
     let roomConfig: RoomConfiguration | undefined;
     if (body?.room_config) {
       roomConfig = RoomConfiguration.fromJson(body.room_config, { ignoreUnknownFields: true });
+      if (AGENT_NAME && (!roomConfig.agents || roomConfig.agents.length === 0)) {
+        roomConfig.agents = RoomConfiguration.fromJson(
+          { agents: [{ agentName: AGENT_NAME }] },
+          { ignoreUnknownFields: true }
+        ).agents;
+      }
     } else if (AGENT_NAME) {
-      // When AGENT_NAME is set, configure explicit agent dispatch so the named
-      // agent worker picks up the job when a user joins the room.
       roomConfig = RoomConfiguration.fromJson(
         { agents: [{ agentName: AGENT_NAME }] },
         { ignoreUnknownFields: true }

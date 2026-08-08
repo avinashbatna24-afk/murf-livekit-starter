@@ -1,19 +1,61 @@
+'use client';
+
 import { Button } from '@/components/ui/button';
 
-function WelcomeImage() {
+const SUBJECTS = [
+  { label: 'Maths', emoji: '📐', color: 'from-orange-500/20 to-orange-500/5 border-orange-500/30 text-orange-300' },
+  { label: 'Science', emoji: '🔬', color: 'from-teal-500/20 to-teal-500/5 border-teal-500/30 text-teal-300' },
+  { label: 'Python', emoji: '🐍', color: 'from-indigo-500/20 to-indigo-500/5 border-indigo-500/30 text-indigo-300' },
+  { label: 'Java', emoji: '☕', color: 'from-amber-500/20 to-amber-500/5 border-amber-500/30 text-amber-300' },
+  { label: 'English', emoji: '📚', color: 'from-pink-500/20 to-pink-500/5 border-pink-500/30 text-pink-300' },
+  { label: 'GK', emoji: '🌍', color: 'from-cyan-500/20 to-cyan-500/5 border-cyan-500/30 text-cyan-300' },
+];
+
+function MortarBoardMic() {
   return (
     <svg
-      width="64"
-      height="64"
-      viewBox="0 0 64 64"
+      width="88"
+      height="88"
+      viewBox="0 0 88 88"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className="text-fg0 mb-4 size-16"
+      aria-hidden="true"
     >
-      <path
-        d="M15 24V40C15 40.7957 14.6839 41.5587 14.1213 42.1213C13.5587 42.6839 12.7956 43 12 43C11.2044 43 10.4413 42.6839 9.87868 42.1213C9.31607 41.5587 9 40.7957 9 40V24C9 23.2044 9.31607 22.4413 9.87868 21.8787C10.4413 21.3161 11.2044 21 12 21C12.7956 21 13.5587 21.3161 14.1213 21.8787C14.6839 22.4413 15 23.2044 15 24ZM22 5C21.2044 5 20.4413 5.31607 19.8787 5.87868C19.3161 6.44129 19 7.20435 19 8V56C19 56.7957 19.3161 57.5587 19.8787 58.1213C20.4413 58.6839 21.2044 59 22 59C22.7956 59 23.5587 58.6839 24.1213 58.1213C24.6839 57.5587 25 56.7957 25 56V8C25 7.20435 24.6839 6.44129 24.1213 5.87868C23.5587 5.31607 22.7956 5 22 5ZM32 13C31.2044 13 30.4413 13.3161 29.8787 13.8787C29.3161 14.4413 29 15.2044 29 16V48C29 48.7957 29.3161 49.5587 29.8787 50.1213C30.4413 50.6839 31.2044 51 32 51C32.7956 51 33.5587 50.6839 34.1213 50.1213C34.6839 49.5587 35 48.7957 35 48V16C35 15.2044 34.6839 14.4413 34.1213 13.8787C33.5587 13.3161 32.7956 13 32 13ZM42 21C41.2043 21 40.4413 21.3161 39.8787 21.8787C39.3161 22.4413 39 23.2044 39 24V40C39 40.7957 39.3161 41.5587 39.8787 42.1213C40.4413 42.6839 41.2043 43 42 43C42.7957 43 43.5587 42.6839 44.1213 42.1213C44.6839 41.5587 45 40.7957 45 40V24C45 23.2044 44.6839 22.4413 44.1213 21.8787C43.5587 21.3161 42.7957 21 42 21ZM52 17C51.2043 17 50.4413 17.3161 49.8787 17.8787C49.3161 18.4413 49 19.2044 49 20V44C49 44.7957 49.3161 45.5587 49.8787 46.1213C50.4413 46.6839 51.2043 47 52 47C52.7957 47 53.5587 46.6839 54.1213 46.1213C54.6839 45.5587 55 44.7957 55 44V20C55 19.2044 54.6839 18.4413 54.1213 17.8787C53.5587 17.3161 52.7957 17 52 17Z"
-        fill="currentColor"
-      />
+      {/* Glow circle */}
+      <circle cx="44" cy="44" r="42" fill="url(#welcomeGlow)" opacity="0.12" />
+
+      {/* Mortarboard hat */}
+      <polygon points="44,14 78,28 44,42 10,28" fill="url(#hatGrad)" opacity="0.95" />
+      <rect x="36" y="28" width="16" height="18" rx="3" fill="url(#hatGrad)" opacity="0.7" />
+      {/* Tassel */}
+      <line x1="78" y1="28" x2="78" y2="44" stroke="#F97316" strokeWidth="2" strokeLinecap="round" />
+      <circle cx="78" cy="46" r="3" fill="#F97316" />
+
+      {/* Microphone body */}
+      <rect x="35" y="46" width="14" height="20" rx="7" fill="url(#micGrad)" />
+      {/* Mic stand */}
+      <path d="M44 66 Q44 74 44 74" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" />
+      <line x1="37" y1="74" x2="51" y2="74" stroke="#6366F1" strokeWidth="2" strokeLinecap="round" />
+      {/* Sound waves */}
+      <path d="M30 53 Q26 56 26 60 Q26 64 30 67" stroke="#14B8A6" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.8" />
+      <path d="M25 50 Q18 55 18 60 Q18 65 25 70" stroke="#14B8A6" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.5" />
+      <path d="M58 53 Q62 56 62 60 Q62 64 58 67" stroke="#14B8A6" strokeWidth="1.8" strokeLinecap="round" fill="none" opacity="0.8" />
+      <path d="M63 50 Q70 55 70 60 Q70 65 63 70" stroke="#14B8A6" strokeWidth="1.4" strokeLinecap="round" fill="none" opacity="0.5" />
+
+      <defs>
+        <linearGradient id="hatGrad" x1="10" y1="14" x2="78" y2="42" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#F97316" />
+          <stop offset="1" stopColor="#6366F1" />
+        </linearGradient>
+        <linearGradient id="micGrad" x1="35" y1="46" x2="49" y2="66" gradientUnits="userSpaceOnUse">
+          <stop stopColor="#6366F1" />
+          <stop offset="1" stopColor="#14B8A6" />
+        </linearGradient>
+        <radialGradient id="welcomeGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#F97316" />
+          <stop offset="100%" stopColor="#6366F1" />
+        </radialGradient>
+      </defs>
     </svg>
   );
 }
@@ -29,37 +71,75 @@ export const WelcomeView = ({
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   return (
-    <div ref={ref}>
-      <section className="bg-background flex flex-col items-center justify-center text-center">
-        <WelcomeImage />
+    <div ref={ref} className="relative flex h-svh w-full flex-col items-center justify-center px-6 text-center">
 
-        <p className="text-foreground max-w-prose pt-1 leading-6 font-medium">
-          Chat live with your voice AI agent
-        </p>
-
-        <Button
-          size="lg"
-          onClick={onStartCall}
-          className="mt-6 w-64 rounded-full font-mono text-xs font-bold tracking-wider uppercase"
-        >
-          {startButtonText}
-        </Button>
-      </section>
-
-      <div className="fixed bottom-5 left-0 flex w-full items-center justify-center">
-        <p className="text-muted-foreground max-w-prose pt-1 text-xs leading-5 font-normal text-pretty md:text-sm">
-          Need help getting set up? Check out the{' '}
-          <a
-            target="_blank"
-            rel="noopener noreferrer"
-            href="https://docs.livekit.io/agents/start/voice-ai/"
-            className="underline"
-          >
-            Voice AI quickstart
-          </a>
-          .
-        </p>
+      {/* Mascot icon */}
+      <div className="animate-float mb-6 flex h-28 w-28 items-center justify-center rounded-3xl border border-white/10 bg-white/5 backdrop-blur-sm shadow-2xl">
+        <MortarBoardMic />
       </div>
+
+      {/* Main heading */}
+      <h1 className="mb-1 text-4xl font-extrabold tracking-tight text-white sm:text-5xl">
+        <span className="eduvoice-text-gradient">EduVoice</span>
+      </h1>
+
+      {/* English subtitle */}
+      <p className="mb-1 text-base font-semibold text-white/70">
+        Your AI Voice Tutor
+      </p>
+
+      {/* Telugu tagline */}
+      <p className="mb-6 font-medium text-sm text-white/40" lang="te">
+        మీ AI చదువుల గురువు
+      </p>
+
+      {/* Subject chips */}
+      <div className="mb-8 flex flex-wrap items-center justify-center gap-2">
+        {SUBJECTS.map(({ label, emoji, color }) => (
+          <span
+            key={label}
+            className={`flex items-center gap-1.5 rounded-full border bg-gradient-to-b px-3 py-1.5 text-xs font-bold ${color}`}
+          >
+            <span>{emoji}</span>
+            <span>{label}</span>
+          </span>
+        ))}
+      </div>
+
+      {/* CTA button */}
+      <button
+        id="start-call-button"
+        onClick={onStartCall}
+        className="animate-glow-saffron group relative mb-4 overflow-hidden rounded-full bg-gradient-to-r from-[#F97316] to-[#EA580C] px-10 py-4 text-sm font-extrabold tracking-widest text-white uppercase shadow-2xl transition-all duration-300 hover:scale-105 hover:opacity-95 active:scale-95"
+      >
+        <span className="relative z-10 flex items-center gap-2">
+          🎓 <span>{startButtonText}</span>
+        </span>
+        {/* Shimmer overlay */}
+        <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/20 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+      </button>
+
+      {/* Instruction text */}
+      <p className="mb-10 text-xs text-white/35 font-medium">
+        Speak in Telugu, English, or both — I understand!
+      </p>
+
+      {/* Divider */}
+      <div className="h-px w-32 bg-gradient-to-r from-transparent via-white/15 to-transparent mb-6" />
+
+      {/* Footer */}
+      <p className="text-xs text-white/25 font-mono tracking-wider">
+        Powered by{' '}
+        <a
+          href="https://murf.ai"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 text-white/40 hover:text-white/60 transition-colors"
+        >
+          Murf Falcon
+        </a>
+        {' '}· LiveKit Agents · #VoiceForBharat
+      </p>
     </div>
   );
 };
