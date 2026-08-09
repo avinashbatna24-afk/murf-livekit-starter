@@ -30,8 +30,25 @@ export async function POST(req: Request) {
       throw new Error('LIVEKIT_API_SECRET is not defined');
     }
 
-    // Parse room config from request body (if provided).
+    // Parse room config and user identity from request body / query parameters.
+    const url = new URL(req.url);
     const body = await req.json().catch(() => ({}));
+
+    const rawUsername =
+      body?.username ||
+      body?.name ||
+      url.searchParams.get('username') ||
+      url.searchParams.get('name') ||
+      'Student';
+    const participantName = rawUsername.trim();
+    const cleanId =
+      participantName
+        .toLowerCase()
+        .replace(/[^a-z0-9_]/g, '_')
+        .replace(/^_+|_+$/g, '') || 'student';
+    const participantIdentity = body?.user_id || body?.userId || cleanId;
+    const roomName = `edu_session_${cleanId}_${Math.floor(Math.random() * 1_000)}`;
+
     let roomConfig: RoomConfiguration | undefined;
     if (body?.room_config) {
       roomConfig = RoomConfiguration.fromJson(body.room_config, { ignoreUnknownFields: true });
@@ -47,11 +64,6 @@ export async function POST(req: Request) {
         { ignoreUnknownFields: true }
       );
     }
-      
-    // Generate participant token
-    const participantName = 'user';
-    const participantIdentity = `voice_assistant_user_${Math.floor(Math.random() * 10_000)}`;
-    const roomName = `voice_assistant_room_${Math.floor(Math.random() * 10_000)}`;
 
     const participantToken = await createParticipantToken(
       { identity: participantIdentity, name: participantName },

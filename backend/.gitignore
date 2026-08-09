@@ -31,3 +31,9 @@ KMS
 
 # GitHub CLI
 .github/personal-instructions.md
+
+# Database files
+data/
+*.db
+*.sqlite
+

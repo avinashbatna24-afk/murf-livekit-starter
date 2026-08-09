@@ -125,7 +125,9 @@ function useMicPermission() {
 
     const check = async () => {
       try {
-        permStatus = await navigator.permissions.query({ name: 'microphone' } as PermissionDescriptor);
+        permStatus = await navigator.permissions.query({
+          name: 'microphone',
+        } as PermissionDescriptor);
         setMicBlocked(permStatus.state === 'denied');
         permStatus.onchange = () => {
           setMicBlocked(permStatus?.state === 'denied');
@@ -196,7 +198,6 @@ export function AgentSessionView_01({
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
 
-
       {/* Microphone blocked — full-width error bar */}
       <AnimatePresence>
         {micBlocked && (
@@ -205,15 +206,25 @@ export function AgentSessionView_01({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -40 }}
             transition={{ duration: 0.35 }}
-            className="absolute top-0 left-0 right-0 z-30 flex items-center justify-center gap-3 border-b border-red-500/30 bg-red-950/70 px-4 py-3 backdrop-blur-md"
+            className="absolute top-0 right-0 left-0 z-30 flex items-center justify-center gap-3 border-b border-red-500/30 bg-red-950/70 px-4 py-3 backdrop-blur-md"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" className="flex-shrink-0 text-red-400">
-              <path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z" fill="currentColor"/>
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              className="flex-shrink-0 text-red-400"
+            >
+              <path
+                d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22ZM11 7H13V13H11V7ZM11 15H13V17H11V15Z"
+                fill="currentColor"
+              />
             </svg>
             <div className="text-center">
               <p className="text-sm font-bold text-red-300">Microphone access blocked</p>
               <p className="text-xs text-red-400/80">
-                Click the lock icon in your browser address bar → allow microphone → refresh the page
+                Click the lock icon in your browser address bar → allow microphone → refresh the
+                page
               </p>
             </div>
           </motion.div>

@@ -58,7 +58,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
       className={cn(
         nunito.variable,
         commitMono.variable,
-        'scroll-smooth font-sans antialiased dark'
+        'dark scroll-smooth font-sans antialiased'
       )}
     >
       <head>
@@ -67,7 +67,7 @@ export default async function RootLayout({ children }: RootLayoutProps) {
         <meta name="description" content={pageDescription} />
         <meta name="theme-color" content="#0A0A1A" />
       </head>
-      <body className="overflow-x-hidden star-bg">
+      <body className="star-bg overflow-x-hidden">
         <ThemeProvider
           attribute="class"
           defaultTheme="dark"
@@ -79,13 +79,21 @@ export default async function RootLayout({ children }: RootLayoutProps) {
             {/* Logo + name */}
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#F97316] to-[#6366F1] shadow-lg">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" fill="white" fillOpacity="0.95"/>
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"
+                    fill="white"
+                    fillOpacity="0.95"
+                  />
                 </svg>
               </div>
-              <span className="text-lg font-extrabold tracking-tight text-white">
-                EduVoice
-              </span>
+              <span className="text-lg font-extrabold tracking-tight text-white">EduVoice</span>
             </div>
 
             {/* Right side badge */}

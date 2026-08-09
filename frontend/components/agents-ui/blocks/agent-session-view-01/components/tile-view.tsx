@@ -2,12 +2,12 @@ import React, { useMemo } from 'react';
 import { Track } from 'livekit-client';
 import { AnimatePresence, type MotionProps, motion } from 'motion/react';
 import {
+  type AgentState,
   type TrackReference,
   VideoTrack,
   useLocalParticipant,
   useTracks,
   useVoiceAssistant,
-  type AgentState,
 } from '@livekit/components-react';
 import { EduStateBanner } from '@/components/app/edu-state-banner';
 import { cn } from '@/lib/shadcn/utils';

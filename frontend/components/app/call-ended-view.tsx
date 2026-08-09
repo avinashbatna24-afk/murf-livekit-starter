@@ -10,29 +10,57 @@ interface CallEndedViewProps {
 
 function BookIcon() {
   return (
-    <svg
-      width="80"
-      height="80"
-      viewBox="0 0 80 80"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
+    <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
       {/* Book body */}
       <rect x="12" y="14" width="56" height="52" rx="4" fill="url(#bookGrad)" opacity="0.15" />
       <rect x="12" y="14" width="56" height="52" rx="4" stroke="url(#bookGrad)" strokeWidth="2" />
       {/* Spine */}
       <line x1="28" y1="14" x2="28" y2="66" stroke="url(#bookGrad)" strokeWidth="2" />
       {/* Pages */}
-      <line x1="36" y1="28" x2="58" y2="28" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-      <line x1="36" y1="36" x2="58" y2="36" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
-      <line x1="36" y1="44" x2="52" y2="44" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.4" strokeLinecap="round" />
+      <line
+        x1="36"
+        y1="28"
+        x2="58"
+        y2="28"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.4"
+        strokeLinecap="round"
+      />
+      <line
+        x1="36"
+        y1="36"
+        x2="58"
+        y2="36"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.4"
+        strokeLinecap="round"
+      />
+      <line
+        x1="36"
+        y1="44"
+        x2="52"
+        y2="44"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeOpacity="0.4"
+        strokeLinecap="round"
+      />
       {/* Star */}
       <path
         d="M40 4L42.47 9.62L48.51 10.24L44.15 14.26L45.53 20.18L40 17.02L34.47 20.18L35.85 14.26L31.49 10.24L37.53 9.62L40 4Z"
         fill="url(#starGrad)"
       />
       <defs>
-        <linearGradient id="bookGrad" x1="12" y1="14" x2="68" y2="66" gradientUnits="userSpaceOnUse">
+        <linearGradient
+          id="bookGrad"
+          x1="12"
+          y1="14"
+          x2="68"
+          y2="66"
+          gradientUnits="userSpaceOnUse"
+        >
           <stop stopColor="#F97316" />
           <stop offset="1" stopColor="#6366F1" />
         </linearGradient>
@@ -50,7 +78,10 @@ export const CallEndedView = ({
   ref,
 }: React.ComponentProps<'div'> & CallEndedViewProps) => {
   return (
-    <div ref={ref} className="flex h-svh w-full flex-col items-center justify-center px-6 text-center">
+    <div
+      ref={ref}
+      className="flex h-svh w-full flex-col items-center justify-center px-6 text-center"
+    >
       {/* Animated illustration */}
       <motion.div
         initial={{ scale: 0.7, opacity: 0, y: 20 }}
@@ -70,10 +101,8 @@ export const CallEndedView = ({
         transition={{ delay: 0.25, duration: 0.5 }}
         className="mb-3"
       >
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">
-          Great session! 🎉
-        </h1>
-        <p className="mt-2 text-base text-white/50 font-medium">
+        <h1 className="text-3xl font-extrabold tracking-tight text-white">Great session! 🎉</h1>
+        <p className="mt-2 text-base font-medium text-white/50">
           మీరు చాలా బాగా చేశారు! — You did amazing!
         </p>
       </motion.div>
@@ -85,9 +114,9 @@ export const CallEndedView = ({
         transition={{ delay: 0.4, duration: 0.5 }}
         className="mb-8 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm"
       >
-        <p className="text-sm text-white/60 leading-relaxed">
-          Your call with EduVoice has ended. Every question you asked brings you
-          one step closer to mastering your subject. Keep that curiosity alive! 🌟
+        <p className="text-sm leading-relaxed text-white/60">
+          Your call with EduVoice has ended. Every question you asked brings you one step closer to
+          mastering your subject. Keep that curiosity alive! 🌟
         </p>
         <div className="mt-4 flex items-center justify-center gap-2">
           {['Maths', 'Science', 'Code', 'English'].map((sub) => (
@@ -111,7 +140,7 @@ export const CallEndedView = ({
           id="restart-call-button"
           size="lg"
           onClick={onRestart}
-          className="animate-glow-saffron w-64 rounded-full bg-gradient-to-r from-[#F97316] to-[#EA580C] py-6 text-sm font-extrabold tracking-widest text-white uppercase shadow-xl hover:opacity-90 transition-opacity"
+          className="animate-glow-saffron w-64 rounded-full bg-gradient-to-r from-[#F97316] to-[#EA580C] py-6 text-sm font-extrabold tracking-widest text-white uppercase shadow-xl transition-opacity hover:opacity-90"
         >
           🎓 Start Again
         </Button>
@@ -122,10 +151,10 @@ export const CallEndedView = ({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.7, duration: 0.5 }}
-        className="mt-10 text-xs text-white/25 font-mono tracking-wider"
+        className="mt-10 font-mono text-xs tracking-wider text-white/25"
       >
         Powered by Murf Falcon · VoiceForBharat
       </motion.p>
     </div>
   );
-}
+};

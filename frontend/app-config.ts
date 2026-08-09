@@ -40,7 +40,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
     'Learn Maths, Science, Programming & English with EduVoice — your AI tutor powered by Murf Falcon, the fastest TTS API. Speak in Telugu, English, or both!',
 
   // ── Feature flags ───────────────────────────────────────────────────
-  supportsChatInput: true,   // keep live transcript
+  supportsChatInput: true, // keep live transcript
   supportsVideoInput: false, // no camera needed for voice tutor
   supportsScreenShare: false,
   isPreConnectBufferEnabled: true,
@@ -48,8 +48,8 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   // ── Visual identity ─────────────────────────────────────────────────
   logo: '/murf-logo.svg',
   logoDark: '/murf-logo-dark.svg',
-  accent: '#F97316',        // saffron
-  accentDark: '#FDBA74',    // lighter saffron for dark
+  accent: '#F97316', // saffron
+  accentDark: '#FDBA74', // lighter saffron for dark
   startButtonText: 'Start Learning',
 
   // ── Audio visualiser — aura style in saffron/indigo ─────────────────

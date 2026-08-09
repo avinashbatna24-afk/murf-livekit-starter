@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { TokenSource } from 'livekit-client';
 import { useSession } from '@livekit/components-react';
 import { WarningIcon } from '@phosphor-icons/react/dist/ssr';
@@ -27,11 +27,13 @@ interface AppProps {
 }
 
 export function App({ appConfig }: AppProps) {
+  const [studentName, setStudentName] = useState<string>('Ramesh');
+
   const tokenSource = useMemo(() => {
     return typeof process.env.NEXT_PUBLIC_CONN_DETAILS_ENDPOINT === 'string'
       ? getSandboxTokenSource(appConfig)
-      : TokenSource.endpoint('/api/token');
-  }, [appConfig]);
+      : TokenSource.endpoint(`/api/token?username=${encodeURIComponent(studentName)}`);
+  }, [appConfig, studentName]);
 
   const session = useSession(
     tokenSource,
@@ -42,7 +44,11 @@ export function App({ appConfig }: AppProps) {
     <AgentSessionProvider session={session}>
       <AppSetup />
       <main className="grid h-svh grid-cols-1 place-content-center">
-        <ViewController appConfig={appConfig} />
+        <ViewController
+          appConfig={appConfig}
+          studentName={studentName}
+          setStudentName={setStudentName}
+        />
       </main>
       <StartAudioButton label="Start Audio" />
       <Toaster
