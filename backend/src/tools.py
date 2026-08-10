@@ -209,7 +209,9 @@ async def _generate_topic_question_via_gemini(
     """
     api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        logger.warning("GOOGLE_API_KEY not set, cannot generate topic question via Gemini")
+        logger.warning(
+            "GOOGLE_API_KEY not set, cannot generate topic question via Gemini"
+        )
         return None
 
     prompt = (
