@@ -1,11 +1,11 @@
-import json
 import tempfile
 from pathlib import Path
 
 import pytest
-from db import get_user_memory, init_db, save_user_memory
-from agent import Assistant
 from livekit.agents import AgentSession, inference, llm
+
+from agent import Assistant
+from db import get_user_memory, init_db, save_user_memory
 
 
 def _llm() -> llm.LLM:
@@ -86,7 +86,10 @@ async def test_forget_me_request(temp_db_env) -> None:
     save_user_memory(
         user_id="ramesh",
         name="Ramesh",
-        facts={"current_level": "Class 10 Math", "topics_covered": ["Quadratic Equations"]},
+        facts={
+            "current_level": "Class 10 Math",
+            "topics_covered": ["Quadratic Equations"],
+        },
         db_path=temp_db_env,
     )
     assert get_user_memory("ramesh", db_path=temp_db_env) is not None

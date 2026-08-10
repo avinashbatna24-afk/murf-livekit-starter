@@ -10,6 +10,26 @@ User speaks → [Deepgram STT] → text → [Gemini LLM] → response → [Murf 
 
 LiveKit handles the real-time audio transport. The agent connects to LiveKit as a participant, listens for user speech, and responds with synthesized audio.
 
+## Day 5: Live Tools — Data Sources
+
+EduVoice has two function tools that fetch real data during a session:
+
+| Tool | Data Source | Live or Local? |
+|---|---|---|
+| `fetch_practice_question(subject, level)` | **[Open Trivia DB](https://opentdb.com)** — free, keyless REST API | **Live** (real-time internet fetch). Falls back to a **hand-built local question bank** (5 subjects × 2–3 questions) if the API is unreachable or rate-limited. |
+| `score_student_answer(student_answer, correct_answer)` | Pure local computation | **Local** (no network needed) |
+
+### Graceful Failure
+If the Open Trivia DB API is down or rate-limited (limit: 1 req/5s per IP):
+- The agent speaks: *"Internet lo chinna problem, local question ista!"*
+- A hand-built fallback question for the correct subject is used instead.
+- The agent always tells the student which source was used.
+
+### Data Freshness
+- Live questions: fetched at the moment the student asks. The agent announces this: *"Ee question internet nundi live ga vasindi!"*
+- Local fallback: pre-built by the author for Maths, Science, Computers, History, Geography, GK.
+
+
 ## Setup
 
 ### 1. Install dependencies

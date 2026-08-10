@@ -1,6 +1,8 @@
 import tempfile
 from pathlib import Path
+
 import pytest
+
 from db import delete_user_memory, get_user_memory, init_db, save_user_memory
 
 
@@ -36,21 +38,30 @@ def test_save_and_get_user_memory(temp_db):
     retrieved = get_user_memory(user_id="ramesh", db_path=temp_db)
     assert retrieved is not None
     assert retrieved["name"] == "Ramesh"
-    assert retrieved["facts"]["topics_covered"] == ["Quadratic Equations", "Photosynthesis"]
+    assert retrieved["facts"]["topics_covered"] == [
+        "Quadratic Equations",
+        "Photosynthesis",
+    ]
 
 
 def test_update_user_memory(temp_db):
     save_user_memory(
         user_id="priya",
         name="Priya",
-        facts={"current_level": "Class 9 Science", "topics_covered": ["Cell structure"]},
+        facts={
+            "current_level": "Class 9 Science",
+            "topics_covered": ["Cell structure"],
+        },
         db_path=temp_db,
     )
 
     updated = save_user_memory(
         user_id="priya",
         name="Priya",
-        facts={"current_level": "Class 9 Science", "topics_covered": ["Cell structure", "Tissue"]},
+        facts={
+            "current_level": "Class 9 Science",
+            "topics_covered": ["Cell structure", "Tissue"],
+        },
         db_path=temp_db,
     )
 
