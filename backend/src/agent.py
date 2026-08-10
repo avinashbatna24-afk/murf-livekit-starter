@@ -47,18 +47,26 @@ DAY 5 TOOL RULES — LIVE QUIZ QUESTIONS
 
 You have TWO live tools for fetching and scoring practice questions:
 
-TOOL A: `fetch_practice_question(subject, level)`
-- Call this whenever a student asks for a practice question, quiz, or exercise on any subject.
+TOOL A: `fetch_practice_question(subject, level, topic)`
+- Call this whenever a student asks for a practice question, quiz, or exercise.
 - Examples that MUST trigger this tool:
-  • "Give me a Science question" → fetch_practice_question(subject='Science', level='Class 10')
-  • "Oka Maths question iyyi" → fetch_practice_question(subject='Maths', level='Class 9')
-  • "Quiz cheyyi" (any subject) → fetch_practice_question(subject=<infer from context>, level=<from memory or ask>)
-- CHAIN WITH DAY 4 MEMORY: If you already know the student's `current_level` from memory, use it automatically — DO NOT ask again.
-- After fetching, SPEAK the question naturally in Tenglish. State if the data is live:
+  • While discussing Photosynthesis → fetch_practice_question(subject='Science', level='Class 10', topic='Photosynthesis')
+  • While discussing Quadratic Equations → fetch_practice_question(subject='Maths', level='Class 9', topic='Quadratic Equations')
+  • General quiz request with no topic → fetch_practice_question(subject='Science', level='Class 10', topic='')
+
+- CRITICAL — ALWAYS PASS THE CURRENT TOPIC:
+  • ALWAYS pass `topic` = the specific concept/topic currently being discussed in this session.
+  • If you just explained "Photosynthesis", pass topic='Photosynthesis'.
+  • If you just explained "Newton's Laws", pass topic="Newton's Laws".
+  • If no specific topic has been discussed yet, pass topic='' (empty string).
+  • NEVER pass topic='' when a topic IS being discussed — this causes random questions!
+
+- CHAIN WITH DAY 4 MEMORY: Use student's saved `current_level` as the `level` param automatically.
+- After fetching, SPEAK the question naturally in Tenglish. Announce the data source:
+  • source='gemini-topic': "Ee question mee topic meeda specially generate chesanu!"
   • source='live': "Ee question internet nundi live ga vasindi!"
   • source='local': "Internet lo chinna issue, so naa local question ista!"
-- Give the student multiple choice options A, B, C, D — read them aloud.
-- Wait for the student's answer before calling score_student_answer.
+- Read choices A, B, C, D aloud. Wait for student answer before calling score_student_answer.
 
 TOOL B: `score_student_answer(student_answer, correct_answer)`
 - Call this IMMEDIATELY after the student responds with their answer to the quiz question.
@@ -165,47 +173,64 @@ class Assistant(Agent):
         context: RunContext,
         subject: str,
         level: str = "Class 10",
+        topic: str = "",
     ) -> str:
-        """Fetch a live multiple-choice practice question from the internet for a student.
+        """Fetch or generate a topic-specific multiple-choice practice question.
 
         WHEN TO CALL: Call this whenever the student asks for a practice question, quiz,
         exercise, or says things like "Give me a question", "Oka question iyyi",
         "Quiz cheyyi", "Practice chesdam".
 
+        CRITICAL - ALWAYS PASS THE CURRENT TOPIC:
+        - Pass `topic` = the specific concept currently being discussed (e.g. 'Photosynthesis',
+          'Quadratic Equations', "Newton's Laws", 'Python loops').
+        - When topic is given, questions are generated SPECIFICALLY about that topic via Gemini.
+        - When topic is empty, a general subject question is fetched from Open Trivia DB.
+        - NEVER leave topic empty when a specific topic IS being discussed.
+
         CHAINING WITH MEMORY: If you already know the student's current_level from memory,
         pass it as 'level' automatically without asking again.
 
-        DATA SOURCE: Questions come live from Open Trivia DB (opentdb.com).
-        If the API is unavailable, a local fallback question is returned instead.
-        Always tell the student whether the question came live or from local backup.
+        DATA SOURCES (in priority order):
+          1. topic given → Google Gemini generates a topic-specific question
+          2. no topic → Open Trivia DB fetches a random subject-level question
+          3. all APIs fail → Local fallback question bank
 
         Args:
-            subject: The subject for the question (e.g. 'Science', 'Maths', 'History',
-                     'Computers', 'Geography', 'GK'). Infer from context if not stated.
+            subject: The subject (e.g. 'Science', 'Maths', 'History', 'Computers', 'GK').
             level: The student's class or level (e.g. 'Class 10', 'Class 8', 'hard').
                    Use the student's saved current_level from memory if available.
+            topic: The specific concept being discussed (e.g. 'Photosynthesis',
+                   'Quadratic Equations'). Pass empty string if no specific topic.
         """
         logger.info(
-            "fetch_practice_question called: subject=%s level=%s", subject, level
+            "fetch_practice_question called: subject=%s level=%s topic=%s",
+            subject,
+            level,
+            topic,
         )
-        result = await fetch_practice_question(subject=subject, level=level)
+        result = await fetch_practice_question(
+            subject=subject, level=level, topic=topic or None
+        )
 
         choices_labeled = ""
         labels = ["A", "B", "C", "D"]
         for i, choice in enumerate(result["choices"][:4]):
             choices_labeled += f"\n  {labels[i]}) {choice}"
 
-        source_note = (
-            "[DATA SOURCE: Live from Open Trivia DB (opentdb.com) — fetched just now]"
-            if result["source"] == "live"
-            else "[DATA SOURCE: Local fallback question bank (API unavailable)]"
-        )
+        source = result["source"]
+        if source == "gemini-topic":
+            source_note = f"[DATA SOURCE: Generated by Gemini AI specifically about '{topic}' — topic-aware question]"
+        elif source == "live":
+            source_note = "[DATA SOURCE: Live from Open Trivia DB (opentdb.com) — general subject question]"
+        else:
+            source_note = "[DATA SOURCE: Local fallback question bank (APIs unavailable)]"
         fetched_at = result["fetched_at"]
 
         return (
             f"{source_note}\n"
             f"Fetched at: {fetched_at} UTC\n"
-            f"Subject: {subject} | Difficulty: {result['difficulty']}\n\n"
+            f"Subject: {subject} | Topic: {topic or 'general'} | Difficulty: {result['difficulty']}\n\n"
             f"QUESTION: {result['question']}\n"
             f"CHOICES:{choices_labeled}\n\n"
             f"CORRECT_ANSWER (do NOT reveal yet): {result['correct_answer']}\n\n"

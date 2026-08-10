@@ -2,18 +2,23 @@
 tools.py — Day 5 Live Tools for EduVoice
 
 Provides two capabilities:
-  1. fetch_practice_question: Fetches a live MCQ from Open Trivia DB (opentdb.com)
-     mapped to the student's subject and class level. Falls back to a hand-built
-     local question bank when the API is unavailable.
+  1. fetch_practice_question: Generates a topic-specific MCQ via Google Gemini
+     when a discussion topic is known (e.g. "Photosynthesis"), OR fetches a
+     subject-level MCQ from Open Trivia DB (opentdb.com) when no specific topic
+     is given. Falls back to a hand-built local question bank if both fail.
   2. score_student_answer: Scores the student's spoken answer against the correct
      answer locally (no API needed).
 
-Data source: https://opentdb.com (live, no API key required, CC BY-SA 4.0)
-Fallback: hand-built local dataset of 5 questions per subject.
+Data sources (in priority order):
+  1. Google Gemini API — topic-specific MCQ generation (requires GOOGLE_API_KEY)
+  2. Open Trivia DB — subject-level random questions (free, no key)
+  3. Hand-built local question bank — fallback when both APIs are unavailable
 """
 
 import html
+import json
 import logging
+import os
 import random
 from datetime import datetime, timezone
 from typing import Optional
@@ -24,6 +29,8 @@ logger = logging.getLogger("agent.tools")
 
 OPENTDB_BASE_URL = "https://opentdb.com/api.php"
 OPENTDB_TIMEOUT_SECONDS = 5.0
+GEMINI_TIMEOUT_SECONDS = 8.0
+GEMINI_TOPIC_MODEL = "gemini-1.5-flash-latest"
 
 # Subject name → Open Trivia DB category ID
 SUBJECT_TO_CATEGORY: dict[str, int] = {
@@ -191,21 +198,116 @@ def _get_fallback(subject_key: str) -> Optional[dict]:
     return random.choice(bank)
 
 
+async def _generate_topic_question_via_gemini(
+    topic: str,
+    difficulty: str,
+    fetched_at: str,
+) -> Optional[dict]:
+    """
+    Ask Google Gemini to generate a single multiple-choice question specifically
+    about the given topic. Returns a structured dict or None if it fails.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
+    if not api_key:
+        logger.warning("GOOGLE_API_KEY not set, cannot generate topic question via Gemini")
+        return None
+
+    prompt = (
+        f"Generate exactly ONE multiple-choice question about '{topic}' "
+        f"at {difficulty} difficulty for a high school student in India.\n\n"
+        "Respond ONLY with a valid JSON object in this exact format (no extra text):\n"
+        '{"question": "...", "correct_answer": "...", "incorrect_answers": ["...", "...", "..."]}'
+    )
+
+    gemini_url = (
+        f"https://generativelanguage.googleapis.com/v1beta/models/"
+        f"{GEMINI_TOPIC_MODEL}:generateContent?key={api_key}"
+    )
+    payload = {
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {
+            "temperature": 0.4,
+            "maxOutputTokens": 300,
+        },
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=GEMINI_TIMEOUT_SECONDS) as client:
+            response = await client.post(gemini_url, json=payload)
+            response.raise_for_status()
+            data = response.json()
+
+        raw_text = (
+            data.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [{}])[0]
+            .get("text", "")
+            .strip()
+        )
+
+        # Strip markdown code fences if present
+        if raw_text.startswith("```"):
+            raw_text = raw_text.split("```")[1]
+            if raw_text.startswith("json"):
+                raw_text = raw_text[4:]
+            raw_text = raw_text.strip()
+
+        parsed = json.loads(raw_text)
+        question_text = parsed["question"]
+        correct = parsed["correct_answer"]
+        incorrect = parsed["incorrect_answers"][:3]
+
+        choices = [*incorrect, correct]
+        random.shuffle(choices)
+
+        logger.info(
+            "Generated topic-specific question via Gemini: topic='%s' difficulty=%s",
+            topic,
+            difficulty,
+        )
+        return {
+            "question": question_text,
+            "correct_answer": correct,
+            "choices": choices,
+            "difficulty": difficulty,
+            "source": "gemini-topic",
+            "fetched_at": fetched_at,
+        }
+
+    except (httpx.TimeoutException, httpx.NetworkError, httpx.HTTPStatusError) as e:
+        logger.warning("Gemini API unreachable for topic question: %s", e)
+    except (json.JSONDecodeError, KeyError, IndexError) as e:
+        logger.warning("Failed to parse Gemini response for topic question: %s", e)
+    except Exception as e:
+        logger.error("Unexpected error generating topic question via Gemini: %s", e)
+
+    return None
+
+
 async def fetch_practice_question(
     subject: str,
     level: str = "Class 10",
+    topic: Optional[str] = None,
 ) -> dict:
     """
-    Fetch a live multiple-choice question from Open Trivia DB for the given subject
-    and student level. Returns a dict with:
+    Fetch or generate a multiple-choice practice question for the student.
+
+    Priority order:
+      1. If `topic` is given: generate a question about that specific topic
+         using Google Gemini (e.g. "Photosynthesis", "Quadratic Equations").
+      2. If no topic or Gemini fails: fetch a subject-level random question
+         from Open Trivia DB.
+      3. If Open Trivia DB also fails: use the hand-built local question bank.
+
+    Returns a dict with:
       - question (str)
       - correct_answer (str)
       - choices (list[str])
       - difficulty (str)
-      - source (str): 'live' or 'local'
+      - source (str): 'gemini-topic', 'live', or 'local'
       - fetched_at (str): ISO timestamp in UTC
 
-    Falls back to a hand-built local question if the API is unavailable.
+    Falls back to a hand-built local question if all APIs are unavailable.
     """
     subject_key = _normalize_subject(subject)
     category_id = SUBJECT_TO_CATEGORY.get(subject_key)
@@ -221,7 +323,17 @@ async def fetch_practice_question(
     difficulty = _get_difficulty(level)
     fetched_at = datetime.now(timezone.utc).isoformat()
 
-    # --- Attempt live API call ---
+    # --- PRIORITY 1: Topic-specific question via Gemini ---
+    if topic and topic.strip():
+        topic_clean = topic.strip()
+        gemini_result = await _generate_topic_question_via_gemini(
+            topic=topic_clean, difficulty=difficulty, fetched_at=fetched_at
+        )
+        if gemini_result:
+            return gemini_result
+        logger.info("Gemini topic question failed, falling back to Open Trivia DB")
+
+    # --- PRIORITY 2: Open Trivia DB (subject-level) ---
     if category_id:
         params = {
             "amount": 1,
@@ -270,7 +382,7 @@ async def fetch_practice_question(
         except Exception as e:
             logger.error("Unexpected error fetching from Open Trivia DB: %s", e)
 
-    # --- Fallback to local question bank ---
+    # --- PRIORITY 3: Local fallback question bank ---
     logger.info("Using local fallback question for subject=%s", subject_key)
     fallback = _get_fallback(subject_key)
     return {
