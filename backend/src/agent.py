@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -45,37 +46,33 @@ PERSONA & NATIVE TELUGU TONE
 
 DAY 5 TOOL RULES — LIVE QUIZ QUESTIONS
 
-You have TWO live tools for fetching and scoring practice questions:
+You have THREE tools for live quiz questions:
+
+TOOL 0: `set_discussion_topic(topic)` — CALL THIS FIRST
+- WHEN TO CALL: As soon as you start explaining ANY specific topic to a student.
+  • Starting Photosynthesis lesson → set_discussion_topic(topic='Photosynthesis')
+  • Starting Quadratic Equations → set_discussion_topic(topic='Quadratic Equations')
+  • Starting Newton's Laws → set_discussion_topic(topic="Newton's Laws")
+- This LOCKS the topic so future practice questions are about EXACTLY this topic.
+- Without calling this, questions may be random. ALWAYS call this first!
 
 TOOL A: `fetch_practice_question(subject, level, topic)`
-- Call this whenever a student asks for a practice question, quiz, or exercise.
-- Examples that MUST trigger this tool:
-  • While discussing Photosynthesis → fetch_practice_question(subject='Science', level='Class 10', topic='Photosynthesis')
-  • While discussing Quadratic Equations → fetch_practice_question(subject='Maths', level='Class 9', topic='Quadratic Equations')
-  • General quiz request with no topic → fetch_practice_question(subject='Science', level='Class 10', topic='')
-
-- CRITICAL — ALWAYS PASS THE CURRENT TOPIC:
-  • ALWAYS pass `topic` = the specific concept/topic currently being discussed in this session.
-  • If you just explained "Photosynthesis", pass topic='Photosynthesis'.
-  • If you just explained "Newton's Laws", pass topic="Newton's Laws".
-  • If no specific topic has been discussed yet, pass topic='' (empty string).
-  • NEVER pass topic='' when a topic IS being discussed — this causes random questions!
-
-- CHAIN WITH DAY 4 MEMORY: Use student's saved `current_level` as the `level` param automatically.
-- After fetching, SPEAK the question naturally in Tenglish. Announce the data source:
+- Call this whenever the student asks for a practice question, quiz, or exercise.
+- The tool auto-detects the topic — you don't need to pass it manually.
+  But if you know the topic, pass it to be safe.
+- CHAIN WITH DAY 4 MEMORY: Use student's saved `current_level` as the `level` param.
+- After fetching, announce the source:
   • source='gemini-topic': "Ee question mee topic meeda specially generate chesanu!"
   • source='live': "Ee question internet nundi live ga vasindi!"
   • source='local': "Internet lo chinna issue, so naa local question ista!"
-- Read choices A, B, C, D aloud. Wait for student answer before calling score_student_answer.
+- Read choices A, B, C, D aloud. Wait for student answer.
 
 TOOL B: `score_student_answer(student_answer, correct_answer)`
-- Call this IMMEDIATELY after the student responds with their answer to the quiz question.
-- Pass exactly what the student said and the correct answer from the fetched question.
-- Use the returned `feedback` to respond to the student.
-- After scoring, update `topics_covered` and `mistakes_made` in your context for memory saving.
+- Call IMMEDIATELY after student answers the quiz question.
+- Use the returned `feedback` to respond to the student in Tenglish.
 
 FAILURE HANDLING:
-- If fetch_practice_question returns source='local', say: "Internet lo chinna problem, but no worries! Local question ista."
+- If source='local', say: "Internet lo chinna problem, but no worries! Local question ista."
 - Never go silent. Never invent a question. Always speak a result.
 
 DAY 4 MEMORY RULES
@@ -109,9 +106,112 @@ STYLE CONSTRAINTS:
 """
 
 
+# Words that look capitalized but are NOT educational topics
+_TOPIC_STOPWORDS = {
+    "The",
+    "This",
+    "That",
+    "You",
+    "Your",
+    "We",
+    "Our",
+    "Let",
+    "Now",
+    "Here",
+    "Super",
+    "Brother",
+    "Sister",
+    "Correct",
+    "Answer",
+    "Question",
+    "Topic",
+    "Class",
+    "Level",
+    "Subject",
+    "Well",
+    "Next",
+    "Yes",
+    "No",
+    "Namaste",
+    "Telugu",
+    "English",
+    "Tenglish",
+    "Practice",
+    "Learning",
+    "Study",
+    "EduVoice",
+    "India",
+    "Indian",
+    "Today",
+    "Time",
+    "Wait",
+    "Good",
+    "Great",
+    "Okay",
+    "Sare",
+    "Chala",
+    "Simple",
+    "Easy",
+    "Hard",
+}
+
+
+def _extract_topic_from_chat(chat_ctx) -> str:
+    """
+    Scan the last 8 assistant messages in the chat history to find the most
+    recently discussed educational topic. Returns empty string if none found.
+    """
+    try:
+        messages = getattr(chat_ctx, "messages", [])
+        recent_texts: list[str] = []
+        for msg in reversed(messages[-12:]):
+            role = str(getattr(msg, "role", "")).lower()
+            if "assistant" not in role:
+                continue
+            content = getattr(msg, "content", "")
+            if isinstance(content, list):
+                text = " ".join(
+                    getattr(c, "text", str(c))
+                    for c in content
+                    if not isinstance(c, bytes)
+                )
+            else:
+                text = str(content)
+            # Strip tool metadata noise
+            text = re.sub(r"\[DATA SOURCE.*?\]", "", text)
+            text = re.sub(r"QUESTION:|CHOICES:|CORRECT_ANSWER.*", "", text)
+            recent_texts.append(text)
+            if len(recent_texts) >= 4:
+                break
+
+        if not recent_texts:
+            return ""
+
+        combined = " ".join(recent_texts)
+
+        # Find capitalized phrases (1-4 words) — likely educational topics
+        # e.g. "Photosynthesis", "Quadratic Equations", "Newton's Laws"
+        matches = re.findall(
+            r"\b([A-Z][a-z]{2,}(?:['\u2019]s)?(?:\s+[A-Z]?[a-z]{2,}){0,3})\b",
+            combined,
+        )
+        filtered = [
+            m.strip()
+            for m in matches
+            if m.split()[0] not in _TOPIC_STOPWORDS and len(m) > 3
+        ]
+
+        return filtered[0] if filtered else ""
+    except Exception as exc:
+        logger.debug("Topic extraction from chat failed: %s", exc)
+        return ""
+
+
 class Assistant(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        # Tracks the most recently discussed educational topic this session
+        self._current_topic: str = ""
 
     @function_tool
     async def lookup_user_memory(self, context: RunContext, user_id: str) -> str:
@@ -181,36 +281,48 @@ class Assistant(Agent):
         exercise, or says things like "Give me a question", "Oka question iyyi",
         "Quiz cheyyi", "Practice chesdam".
 
-        CRITICAL - ALWAYS PASS THE CURRENT TOPIC:
-        - Pass `topic` = the specific concept currently being discussed (e.g. 'Photosynthesis',
-          'Quadratic Equations', "Newton's Laws", 'Python loops').
-        - When topic is given, questions are generated SPECIFICALLY about that topic via Gemini.
-        - When topic is empty, a general subject question is fetched from Open Trivia DB.
-        - NEVER leave topic empty when a specific topic IS being discussed.
+        The tool automatically detects the current discussion topic from the
+        conversation — you do NOT need to pass it manually. But if you know
+        the exact topic name, pass it as `topic` to improve accuracy.
 
         CHAINING WITH MEMORY: If you already know the student's current_level from memory,
         pass it as 'level' automatically without asking again.
-
-        DATA SOURCES (in priority order):
-          1. topic given → Google Gemini generates a topic-specific question
-          2. no topic → Open Trivia DB fetches a random subject-level question
-          3. all APIs fail → Local fallback question bank
 
         Args:
             subject: The subject (e.g. 'Science', 'Maths', 'History', 'Computers', 'GK').
             level: The student's class or level (e.g. 'Class 10', 'Class 8', 'hard').
                    Use the student's saved current_level from memory if available.
-            topic: The specific concept being discussed (e.g. 'Photosynthesis',
-                   'Quadratic Equations'). Pass empty string if no specific topic.
+            topic: Optional. The specific concept being discussed (e.g. 'Photosynthesis').
+                   Leave empty to auto-detect from conversation.
         """
+        # --- Auto-detect topic from conversation if not passed by the LLM ---
+        resolved_topic = topic.strip() if topic else ""
+        if not resolved_topic:
+            # 1. Check session-level tracking (set by set_discussion_topic)
+            if self._current_topic:
+                resolved_topic = self._current_topic
+                logger.info("Using session-tracked topic: '%s'", resolved_topic)
+            else:
+                # 2. Fall back to scanning recent chat messages
+                try:
+                    chat_ctx = context.session.chat_ctx
+                    resolved_topic = _extract_topic_from_chat(chat_ctx)
+                    if resolved_topic:
+                        logger.info(
+                            "Auto-extracted topic from chat history: '%s'",
+                            resolved_topic,
+                        )
+                except Exception as exc:
+                    logger.debug("Could not access chat_ctx: %s", exc)
+
         logger.info(
-            "fetch_practice_question called: subject=%s level=%s topic=%s",
+            "fetch_practice_question: subject=%s level=%s resolved_topic='%s'",
             subject,
             level,
-            topic,
+            resolved_topic,
         )
         result = await fetch_practice_question(
-            subject=subject, level=level, topic=topic or None
+            subject=subject, level=level, topic=resolved_topic or None
         )
 
         choices_labeled = ""
@@ -220,17 +332,19 @@ class Assistant(Agent):
 
         source = result["source"]
         if source == "gemini-topic":
-            source_note = f"[DATA SOURCE: Generated by Gemini AI specifically about '{topic}' — topic-aware question]"
+            source_note = f"[DATA SOURCE: Gemini AI generated — specific to topic '{resolved_topic}']"
         elif source == "live":
-            source_note = "[DATA SOURCE: Live from Open Trivia DB (opentdb.com) — general subject question]"
+            source_note = (
+                "[DATA SOURCE: Live from Open Trivia DB — general subject question]"
+            )
         else:
-            source_note = "[DATA SOURCE: Local fallback question bank (APIs unavailable)]"
+            source_note = "[DATA SOURCE: Local fallback question bank]"
         fetched_at = result["fetched_at"]
 
         return (
             f"{source_note}\n"
             f"Fetched at: {fetched_at} UTC\n"
-            f"Subject: {subject} | Topic: {topic or 'general'} | Difficulty: {result['difficulty']}\n\n"
+            f"Subject: {subject} | Topic: {resolved_topic or 'general'} | Difficulty: {result['difficulty']}\n\n"
             f"QUESTION: {result['question']}\n"
             f"CHOICES:{choices_labeled}\n\n"
             f"CORRECT_ANSWER (do NOT reveal yet): {result['correct_answer']}\n\n"
@@ -238,6 +352,27 @@ class Assistant(Agent):
             "Wait for student answer. Then call score_student_answer with their response "
             f"and correct_answer='{result['correct_answer']}'"
         )
+
+    @function_tool
+    async def set_discussion_topic(
+        self,
+        context: RunContext,
+        topic: str,
+    ) -> str:
+        """Remember the current topic being discussed so quiz questions stay relevant.
+
+        WHEN TO CALL: Call this at the START of explaining any specific topic
+        (e.g. 'Photosynthesis', 'Quadratic Equations', 'Newton\'s Laws').
+        This ensures that when fetch_practice_question is called later, the
+        question will be about THIS specific topic, not a random one.
+
+        Args:
+            topic: The specific concept you are about to teach (e.g. 'Photosynthesis',
+                   'Quadratic Equations', 'Python loops', 'French Revolution').
+        """
+        self._current_topic = topic.strip()
+        logger.info("Discussion topic set to: '%s'", self._current_topic)
+        return f"Topic tracked as '{self._current_topic}'. Future practice questions will be about this topic."
 
     @function_tool
     async def score_student_answer(
