@@ -3,6 +3,7 @@ import logging
 import re
 
 from dotenv import load_dotenv
+from livekit import api
 from livekit.agents import (
     Agent,
     AgentServer,
@@ -12,6 +13,7 @@ from livekit.agents import (
     RunContext,
     cli,
     function_tool,
+    get_job_context,
     tokenize,
 )
 from livekit.plugins import deepgram, google, murf, silero
@@ -212,6 +214,24 @@ class Assistant(Agent):
         super().__init__(instructions=SYSTEM_PROMPT)
         # Tracks the most recently discussed educational topic this session
         self._current_topic: str = ""
+
+    @function_tool
+    async def hang_up(self, context: RunContext) -> str:
+        """End the call and disconnect the student.
+
+        WHEN TO CALL: If the student says 'stop', 'bye', 'end call',
+        'disconnect', 'voddhu', or clearly wants to stop the call.
+        Always confirm goodbye before calling this tool.
+        """
+        logger.info("hang_up tool called — ending the outbound call.")
+        try:
+            job_ctx = get_job_context()
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+        except Exception as exc:
+            logger.warning("hang_up: could not delete room: %s", exc)
+        return "Call ended."
 
     @function_tool
     async def lookup_user_memory(self, context: RunContext, user_id: str) -> str:
@@ -433,16 +453,12 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
+    # Detect outbound call: dispatch metadata is set to "outbound:<sip_uri>"
+    dispatch_metadata: str = ctx.job.metadata or ""
+    is_outbound = dispatch_metadata.startswith("outbound:")
+
     # Make sure DB is initialized
     init_db()
-
-    # Retrieve caller participant identity
-    participant = await ctx.wait_for_participant()
-    user_id = (participant.identity or "student_1").strip().lower()
-    raw_name = participant.name or participant.identity or "student"
-
-    # Async memory lookup for returning user
-    user_mem = get_user_memory(user_id)
 
     # Set up voice AI session
     session = AgentSession(
@@ -472,36 +488,72 @@ async def my_agent(ctx: JobContext):
         room=ctx.room,
     )
 
-    if user_mem:
-        caller_name = user_mem.get("name") or raw_name
-        facts = user_mem.get("facts", {})
-        topics = facts.get("topics_covered", "your previous lessons")
-        if isinstance(topics, list):
-            topics = ", ".join(topics)
+    # ── Outbound call greeting ────────────────────────────────────────────────
+    # Outbound is harder: the student did NOT initiate this call and doesn't
+    # know who's calling. Rule: first two sentences must say WHO is calling,
+    # WHY, and HOW TO STOP.
+    if is_outbound:
+        greeting_instruction = """
+        OUTBOUND CALL — CRITICAL OPENING RULES:
 
-        greeting_instruction = f"""
-        RETURNING CALLER FOUND!
-        User ID: '{user_id}'
-        Caller Name: '{caller_name}'
-        Saved Facts: {json.dumps(facts)}
+        This is an OUTBOUND call. The student did NOT initiate this.
+        Your FIRST TWO SENTENCES must always include:
+          1. WHO  — "Nenu EduVoice, mee AI tutor."
+          2. WHY  — "Daily practice reminder kosam call chesanu."
+          3. OPT-OUT — "'Stop' ante call end avutundi anytime."
 
-        Greet {caller_name} warmly in Tenglish (English script).
-        Example: "Namaste {caller_name}! Last time we discussed {topics}. Welcome back brother! Eeroju em topic nerchukundam?"
-        Keep greeting friendly, natural, and under 30 words.
+        Example opening (adapt warmly, keep under 35 words total):
+        "Namaste! Nenu EduVoice, mee AI Voice Tutor. Daily practice reminder
+         kosam call chesanu. Anytime 'Stop' ante disconnect avutam.
+         Ready ga unnara? Eeroju em topic practice chesdam?"
+
+        After the opening, continue as normal EduVoice tutor.
+        If student says 'Stop', 'Bye', 'End', 'Voddhu', or wants to quit
+        — say a warm goodbye first, then call the hang_up tool.
         """
+        logger.info("Outbound call — waiting for student to answer...")
+        # Wait for the SIP participant to actually pick up before speaking
+        await ctx.wait_for_participant()
+        logger.info("Outbound call — student answered, delivering greeting.")
+        await session.generate_reply(instructions=greeting_instruction)
     else:
-        caller_name = raw_name.title() if raw_name else "Student"
-        greeting_instruction = f"""
-        NEW CALLER JOINED!
-        User ID: '{user_id}'
-        Name: '{caller_name}'
+        # ── Inbound call greeting (existing behaviour) ────────────────────────────
+        participant = await ctx.wait_for_participant()
+        user_id = (participant.identity or "student_1").strip().lower()
+        raw_name = participant.name or participant.identity or "student"
 
-        Greet {caller_name} warmly as EduVoice, their AI learning tutor.
-        Example: "Namaste {caller_name}! Nenu EduVoice, mee AI tutor. Eeroju em subject or topic nerchukundam?"
-        Keep greeting friendly, welcoming, and under 30 words.
-        """
+        user_mem = get_user_memory(user_id)
 
-    await session.generate_reply(instructions=greeting_instruction)
+        if user_mem:
+            caller_name = user_mem.get("name") or raw_name
+            facts = user_mem.get("facts", {})
+            topics = facts.get("topics_covered", "your previous lessons")
+            if isinstance(topics, list):
+                topics = ", ".join(topics)
+
+            greeting_instruction = f"""
+            RETURNING CALLER FOUND!
+            User ID: '{user_id}'
+            Caller Name: '{caller_name}'
+            Saved Facts: {json.dumps(facts)}
+
+            Greet {caller_name} warmly in Tenglish (English script).
+            Example: "Namaste {caller_name}! Last time we discussed {topics}. Welcome back brother! Eeroju em topic nerchukundam?"
+            Keep greeting friendly, natural, and under 30 words.
+            """
+        else:
+            caller_name = raw_name.title() if raw_name else "Student"
+            greeting_instruction = f"""
+            NEW CALLER JOINED!
+            User ID: '{user_id}'
+            Name: '{caller_name}'
+
+            Greet {caller_name} warmly as EduVoice, their AI learning tutor.
+            Example: "Namaste {caller_name}! Nenu EduVoice, mee AI tutor. Eeroju em subject or topic nerchukundam?"
+            Keep greeting friendly, welcoming, and under 30 words.
+            """
+
+        await session.generate_reply(instructions=greeting_instruction)
 
 
 if __name__ == "__main__":

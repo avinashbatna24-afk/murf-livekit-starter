@@ -32,6 +32,10 @@ KMS
 # GitHub CLI
 .github/personal-instructions.md
 
+# Executables
+lk.exe
+lk
+
 # Database files
 data/
 *.db
