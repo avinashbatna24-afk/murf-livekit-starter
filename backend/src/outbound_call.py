@@ -12,12 +12,12 @@ How it works:
     4. The student's Linphone app rings — when answered, EduVoice greets them
 """
 
-from datetime import timedelta
 import asyncio
 import logging
 import os
 import sys
 import uuid
+from datetime import timedelta
 
 from dotenv import load_dotenv
 from livekit import api

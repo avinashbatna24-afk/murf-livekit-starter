@@ -10,6 +10,7 @@ import {
 } from '@/components/agents-ui/agent-control-bar';
 import { Shimmer } from '@/components/ai-elements/shimmer';
 import { EduStateBanner } from '@/components/app/edu-state-banner';
+import { EscalationsDashboard } from '@/components/app/escalations-dashboard';
 import { cn } from '@/lib/shadcn/utils';
 import { TileLayout } from './tile-view';
 
@@ -170,6 +171,7 @@ export function AgentSessionView_01({
   const session = useSessionContext();
   const { messages } = useSessionMessages(session);
   const [chatOpen, setChatOpen] = useState(false);
+  const [showEscalations, setShowEscalations] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const { state: agentState } = useAgent();
   const micBlocked = useMicPermission();
@@ -197,6 +199,19 @@ export function AgentSessionView_01({
       {...props}
     >
       <Fade top className="absolute inset-x-4 top-0 z-10 h-40" />
+
+      {/* Floating Teacher Escalation Desk button in active session */}
+      <button
+        type="button"
+        onClick={() => setShowEscalations(true)}
+        className="fixed top-4 right-4 z-40 flex items-center gap-2 rounded-xl border border-white/15 bg-[#0F0F23]/80 px-3.5 py-2 text-xs font-bold text-orange-300 shadow-xl backdrop-blur-md transition-all hover:border-orange-500/50 hover:bg-orange-500/20 hover:text-white"
+      >
+        <span>📋</span>
+        <span>Teacher Desk</span>
+      </button>
+
+      {/* Escalation Dashboard Modal */}
+      {showEscalations && <EscalationsDashboard onClose={() => setShowEscalations(false)} />}
 
       {/* Microphone blocked — full-width error bar */}
       <AnimatePresence>

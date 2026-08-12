@@ -19,14 +19,21 @@ from livekit.agents import (
 from livekit.plugins import deepgram, google, murf, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from db import delete_user_memory, get_user_memory, init_db, save_user_memory
+from db import (
+    delete_user_memory,
+    get_user_memory,
+    init_db,
+    save_escalation,
+    save_user_memory,
+)
+from escalation import dispatch_webhook, generate_ref_id
 from tools import fetch_practice_question, score_student_answer
 
 logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# System prompt for EduVoice Voice Tutor — Day 5: Live Tools + Persistent Memory
+# System prompt for EduVoice Voice Tutor — Day 7: Human Escalation + Live Tools + Persistent Memory
 SYSTEM_PROMPT = """
 IDENTITY & ROLE
 
@@ -45,6 +52,24 @@ PERSONA & NATIVE TELUGU TONE
   • "Arthamaindha?"
 - Always write Telugu words in simple English script (Tenglish) so TTS pronounces it smoothly.
 - Keep technical terms in English (e.g. "Photosynthesis", "Python loop", "Quadratic equation").
+
+DAY 7 HUMAN HELP & ESCALATION RULES
+
+You have a tool `create_escalation(user_id, student_name, reason, issue_summary, context_checked, urgency, language, follow_up_method, permission_granted)`
+
+WHEN TO ESCALATE TO A HUMAN TEACHER:
+1. Learner Frustration / Distress: The student is upset, angry, crying, overwhelmed, or expressing defeat ("I am stupid", "I want to give up", "This is too hard I don't understand").
+2. Direct Request for Human Expert: The student explicitly asks to talk to a real human teacher, tutor, parent, or requests a human review of a quiz score/explanation.
+
+HARD RULE — CONSENT BEFORE CREATING TICKET:
+- When one of the escalation reasons occurs, DO NOT call `create_escalation` right away!
+- FIRST, ask the student for explicit permission to send their details to a human teacher:
+  "Nenu mee details, topic name, and issue summary ni human teacher ki send cheyala follow-up call kosam? Is it okay?"
+- IF CALLER SAYS YES ("Yes", "Sure", "Okay", "Sare", "Send it"):
+  Call `create_escalation(...)` with permission_granted=True.
+  After calling it, speak the returned reference ID (e.g. ESC-4821) and explain honest next steps (e.g. "Mee request create chesenu brother! Reference ID: ESC-4821. A human teacher will review your topic and contact you within 24 hours.").
+- IF CALLER SAYS NO ("No", "Voddhu", "Don't send", "No thanks"):
+  DO NOT call `create_escalation`. Explicitly confirm in Tenglish that no support ticket was created ("Sare brother, request/ticket create cheyaledhu, no problem!"), respect their decision, and offer to help them directly.
 
 DAY 5 TOOL RULES — LIVE QUIZ QUESTIONS
 
@@ -84,7 +109,7 @@ HARD RULE 1 — CONSENT BEFORE SAVING:
 - NEVER save without asking first. After teaching, ask:
   "Mee details & nerchukunna topics memory lo save cheskona next call kosam? Is it okay?"
 - YES ("Yes", "Sare", "Okay", "Sure"): call `save_user_memory`, confirm: "Super! Mee details save chesenu brother."
-- NO ("No", "Voddhu", "Don't save"): drop data, confirm: "Sare brother, no problem! Data em save cheyaledhu."
+- NO / UPFRONT REFUSAL ("No", "Voddhu", "Don't save", "Do NOT save my info"): drop data immediately, do NOT ask for consent again, and confirm clearly: "Sare brother, no problem! Your data will NOT be saved."
 
 HARD RULE 2 — FORGET ME:
 - If caller says "Forget me" / "Delete my data" / "Nanu marchipo": call `forget_user_memory(user_id)`, confirm: "Done! Mee records delete chesenu brother."
@@ -216,6 +241,73 @@ class Assistant(Agent):
         self._current_topic: str = ""
 
     @function_tool
+    async def create_escalation(
+        self,
+        context: RunContext,
+        user_id: str,
+        student_name: str,
+        reason: str,
+        issue_summary: str,
+        context_checked: str,
+        urgency: str = "medium",
+        language: str = "Tenglish",
+        follow_up_method: str = "Teacher Callback",
+        permission_granted: bool = True,
+    ) -> str:
+        """Create a human help request (escalation ticket) for a human teacher when a student is stuck or needs human assistance.
+
+        CRITICAL HARD RULE: YOU MUST ASK FOR EXPLICIT PERMISSION FROM THE CALLER BEFORE CALLING THIS TOOL.
+        Do NOT call this tool if permission_granted is False or if the caller said NO / VODDHU.
+
+        REASONS TO CALL:
+        1. Learner Frustration / Distress: Learner is upset, angry, overwhelmed, or expressing defeat ("I'm stupid", "I want to give up").
+        2. Direct Teacher Request: Student explicitly asks to talk to a human teacher, tutor, parent, or requests grade dispute review.
+
+        Args:
+            user_id: The unique ID or username of the caller (e.g. 'ramesh').
+            student_name: The caller's name (e.g. 'Ramesh').
+            reason: Reason for escalation ('learner_frustrated' or 'teacher_requested').
+            issue_summary: Concise summary of what happened. DO NOT include passwords, OTPs, PINs, or sensitive accounts.
+            context_checked: What the agent already checked/taught (e.g. 'Explained Photosynthesis, attempted quiz question twice').
+            urgency: Urgency level ('low', 'medium', 'high', 'emergency').
+            language: Caller's language preference ('Tenglish', 'Telugu', 'English').
+            follow_up_method: Preferred contact method ('Teacher Callback', 'WhatsApp', 'Email', 'Phone call').
+            permission_granted: Must be True. The caller explicitly gave permission to create this ticket.
+        """
+        if not permission_granted:
+            return "ERROR: Permission was not granted by the caller. Human escalation ticket was NOT created."
+
+        ref_id = generate_ref_id()
+        saved = save_escalation(
+            ref_id=ref_id,
+            user_id=user_id,
+            student_name=student_name,
+            reason=reason,
+            issue_summary=issue_summary,
+            context_checked=context_checked,
+            urgency=urgency,
+            language=language,
+            follow_up_method=follow_up_method,
+        )
+
+        try:
+            await dispatch_webhook(saved)
+        except Exception as exc:
+            logger.warning("Webhook dispatch failed: %s", exc)
+
+        logger.info("Human escalation created: %s for student %s", ref_id, student_name)
+        topic_info = self._current_topic or "lesson"
+        return (
+            f"SUCCESS: Human escalation ticket created!\n"
+            f"Reference ID: {ref_id}\n"
+            f"Status: Open\n"
+            f"Urgency: {urgency}\n\n"
+            f"Instructions for Agent: Speak in warm Tenglish. Tell the caller that their support ticket has been created with Reference ID '{ref_id}'. "
+            f"Explain clearly that a human teacher will review their topic ('{topic_info}') and contact them via '{follow_up_method}' within 24 hours. "
+            f"Do NOT promise an instant call."
+        )
+
+    @function_tool
     async def hang_up(self, context: RunContext) -> str:
         """End the call and disconnect the student.
 
@@ -252,7 +344,7 @@ class Assistant(Agent):
         user_id: str,
         name: str,
         language_preference: str,
-        facts: dict,
+        facts_summary: str,
     ) -> str:
         """Save or update caller memory and facts in the SQLite database.
 
@@ -263,13 +355,21 @@ class Assistant(Agent):
             user_id: The unique ID or username of the caller.
             name: The caller's name.
             language_preference: Preferred language (e.g., 'Tenglish', 'English', 'Telugu').
-            facts: Dictionary containing 'current_level', 'topics_covered', 'mistakes_made'.
+            facts_summary: JSON string or summary of facts ('current_level', 'topics_covered', 'mistakes_made').
         """
+        facts_dict = {"summary": facts_summary}
+        try:
+            parsed = json.loads(facts_summary)
+            if isinstance(parsed, dict):
+                facts_dict = parsed
+        except Exception:
+            pass
+
         saved = save_user_memory(
             user_id=user_id,
             name=name,
             language_preference=language_preference,
-            facts=facts,
+            facts=facts_dict,
         )
         logger.info("Executed save_user_memory tool for %s (%s)", name, user_id)
         return f"Successfully saved user memory for {name} ({user_id}): {json.dumps(saved)}"

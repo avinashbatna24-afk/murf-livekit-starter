@@ -34,7 +34,155 @@ def init_db(db_path: Optional[Path] = None) -> None:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS escalations (
+                    ref_id TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL,
+                    student_name TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    issue_summary TEXT NOT NULL,
+                    context_checked TEXT NOT NULL,
+                    urgency TEXT DEFAULT 'medium',
+                    language TEXT DEFAULT 'Tenglish',
+                    follow_up_method TEXT DEFAULT 'Teacher Callback',
+                    status TEXT DEFAULT 'open',
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
         logger.info("Database initialized successfully at %s", db_path or DB_PATH)
+    finally:
+        conn.close()
+
+
+def sanitize_summary(text: str) -> str:
+    """Scrub sensitive PII (passwords, OTPs, PINs, bank accounts, cards) from summary text."""
+    if not text:
+        return ""
+    import re
+
+    clean = text
+    # Mask passwords / secrets (e.g. 'password is 12345', 'secret: abc', 'password=xyz')
+    clean = re.sub(
+        r"(?i)\b(password|passcode|secret|pin|otp|cvv)\b.*?\b[\w\d@#$%^&*!]{3,}\b",
+        r"\1: [REDACTED]",
+        clean,
+    )
+    # Mask credit/debit card numbers (13-19 digits with spaces/dashes)
+    clean = re.sub(r"\b(?:\d[ -]*?){13,19}\b", "[REDACTED_CARD]", clean)
+    # Mask standalone 4-16 digit numbers (PINs, OTPs, account numbers, Aadhaar)
+    clean = re.sub(r"\b\d{4,16}\b", "[REDACTED_NUMBER]", clean)
+    return clean
+
+
+def save_escalation(
+    ref_id: str,
+    user_id: str,
+    student_name: str,
+    reason: str,
+    issue_summary: str,
+    context_checked: str,
+    urgency: str = "medium",
+    language: str = "Tenglish",
+    follow_up_method: str = "Teacher Callback",
+    db_path: Optional[Path] = None,
+) -> dict[str, Any]:
+    """Save a human escalation request to SQLite database."""
+    init_db(db_path)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    clean_summary = sanitize_summary(issue_summary)
+    clean_context = sanitize_summary(context_checked)
+
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO escalations (
+                    ref_id, user_id, student_name, reason, issue_summary,
+                    context_checked, urgency, language, follow_up_method, status, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)
+                ON CONFLICT(ref_id) DO UPDATE SET
+                    issue_summary = excluded.issue_summary,
+                    context_checked = excluded.context_checked,
+                    urgency = excluded.urgency,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    ref_id,
+                    user_id.strip().lower(),
+                    student_name.strip(),
+                    reason.strip(),
+                    clean_summary,
+                    clean_context,
+                    urgency.strip().lower(),
+                    language.strip(),
+                    follow_up_method.strip(),
+                    now_iso,
+                    now_iso,
+                ),
+            )
+        logger.info("Saved escalation request %s for user %s", ref_id, user_id)
+        return {
+            "ref_id": ref_id,
+            "user_id": user_id,
+            "student_name": student_name,
+            "reason": reason,
+            "issue_summary": clean_summary,
+            "context_checked": clean_context,
+            "urgency": urgency,
+            "language": language,
+            "follow_up_method": follow_up_method,
+            "status": "open",
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+    finally:
+        conn.close()
+
+
+def get_escalations(
+    status: Optional[str] = None, db_path: Optional[Path] = None
+) -> list[dict[str, Any]]:
+    """Retrieve all human escalation requests from SQLite."""
+    init_db(db_path)
+    conn = get_connection(db_path)
+    try:
+        cursor = conn.cursor()
+        if status:
+            cursor.execute(
+                "SELECT * FROM escalations WHERE LOWER(status) = ? ORDER BY created_at DESC",
+                (status.strip().lower(),),
+            )
+        else:
+            cursor.execute("SELECT * FROM escalations ORDER BY created_at DESC")
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def update_escalation_status(
+    ref_id: str, status: str, db_path: Optional[Path] = None
+) -> bool:
+    """Update status of an escalation ticket (e.g. 'open' -> 'in_progress' -> 'resolved')."""
+    init_db(db_path)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = get_connection(db_path)
+    try:
+        with conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE escalations SET status = ?, updated_at = ? WHERE UPPER(ref_id) = ?",
+                (status.strip().lower(), now_iso, ref_id.strip().upper()),
+            )
+            updated = cursor.rowcount > 0
+            if updated:
+                logger.info("Updated escalation %s status to %s", ref_id, status)
+            return updated
     finally:
         conn.close()
 

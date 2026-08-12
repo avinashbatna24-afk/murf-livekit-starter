@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { EscalationsDashboard } from '@/components/app/escalations-dashboard';
 
 const SUBJECTS = [
   {
@@ -143,6 +144,7 @@ export const WelcomeView = ({
   ref,
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   const [internalName, setInternalName] = useState('Ramesh');
+  const [showEscalations, setShowEscalations] = useState(false);
 
   const currentName = externalStudentName !== undefined ? externalStudentName : internalName;
   const updateName = (val: string) => {
@@ -268,9 +270,22 @@ export const WelcomeView = ({
       </button>
 
       {/* Instruction text */}
-      <p className="mb-6 text-xs font-medium text-white/35">
+      <p className="mb-4 text-xs font-medium text-white/35">
         Speak in Telugu, English, or both — I remember your facts across calls!
       </p>
+
+      {/* Teacher Escalation Desk button */}
+      <button
+        type="button"
+        onClick={() => setShowEscalations(true)}
+        className="mb-6 flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-orange-300 backdrop-blur-sm transition-all hover:border-orange-500/50 hover:bg-orange-500/10 hover:text-white"
+      >
+        <span>📋</span>
+        <span>Teacher Escalation Desk</span>
+      </button>
+
+      {/* Escalation Dashboard Modal */}
+      {showEscalations && <EscalationsDashboard onClose={() => setShowEscalations(false)} />}
 
       {/* Divider */}
       <div className="mb-4 h-px w-32 bg-gradient-to-r from-transparent via-white/15 to-transparent" />
