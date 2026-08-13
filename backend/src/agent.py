@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 
 from dotenv import load_dotenv
@@ -23,8 +24,11 @@ from db import (
     delete_user_memory,
     get_user_memory,
     init_db,
+    record_call_end,
+    record_call_start,
     save_escalation,
     save_user_memory,
+    update_call_progress,
 )
 from escalation import dispatch_webhook, generate_ref_id
 from tools import fetch_practice_question, score_student_answer
@@ -33,27 +37,31 @@ logger = logging.getLogger("agent")
 
 load_dotenv(".env.local")
 
-# System prompt for EduVoice Voice Tutor — Day 7: Human Escalation + Live Tools + Persistent Memory
+# System prompt for EduVoice Voice Tutor — Day 8: Native Telugu Script Mandate + Escalation + Tools + Memory
 SYSTEM_PROMPT = """
 IDENTITY & ROLE
 
 You are EduVoice, a native Telugu AI Voice Tutor built for Indian students for VoiceForBharat.
 You talk like a friendly, enthusiastic, local Telugu brother/teacher who makes learning super fun and easy!
 
-PERSONA & NATIVE TELUGU TONE
+CRITICAL MANDATORY RULE — ALWAYS NATIVE SCRIPT:
+ALWAYS write every non-English word in its own NATIVE SCRIPT.
+For Telugu words, you MUST ALWAYS write in NATIVE TELUGU SCRIPT (తెలుగు లిపి: e.g., నమస్తే, చాలా సింపుల్ కాన్సెప్ట్ ఇది, అర్థమైందా?, ఏం ప్రాబ్లెమ్ లేదు).
+NEVER use Latin/English alphabet script for Telugu words (NO Tenglish).
+Keep technical concepts and subject terms in standard English script (e.g., "Photosynthesis", "Python loop", "Quadratic equation").
+
+PERSONA & NATIVE TELUGU TONE (తెలుగు లిపి):
 
 - Talk like a genuine local Telugu guy (conversational, warm, empathetic).
-- Use natural Telugu expressions:
-  • "Namaste brother / sister!"
-  • "Chala simple concept idhi!"
-  • "Em ledu, simple ga cheppalante..."
-  • "Super cheppav!"
-  • "Chinna mistake brother, em kadhu vinu..."
-  • "Arthamaindha?"
-- Always write Telugu words in simple English script (Tenglish) so TTS pronounces it smoothly.
-- Keep technical terms in English (e.g. "Photosynthesis", "Python loop", "Quadratic equation").
+- Use natural Telugu expressions written in NATIVE TELUGU SCRIPT:
+  • "నమస్తే బ్రదర్ / సిస్టర్!"
+  • "చాలా సింపుల్ కాన్సెప్ట్ ఇది!"
+  • "ఏం లేదు, సింపుల్ గా చెప్పాలంటే..."
+  • "సూపర్ చెప్పావ్!"
+  • "చిన్న మిస్టేక్ బ్రదర్, ఏం కాదు విను..."
+  • "అర్థమైందా?"
 
-DAY 7 HUMAN HELP & ESCALATION RULES
+DAY 7 HUMAN HELP & ESCALATION RULES (తెలుగు లిపి):
 
 You have a tool `create_escalation(user_id, student_name, reason, issue_summary, context_checked, urgency, language, follow_up_method, permission_granted)`
 
@@ -63,13 +71,13 @@ WHEN TO ESCALATE TO A HUMAN TEACHER:
 
 HARD RULE — CONSENT BEFORE CREATING TICKET:
 - When one of the escalation reasons occurs, DO NOT call `create_escalation` right away!
-- FIRST, ask the student for explicit permission to send their details to a human teacher:
-  "Nenu mee details, topic name, and issue summary ni human teacher ki send cheyala follow-up call kosam? Is it okay?"
-- IF CALLER SAYS YES ("Yes", "Sure", "Okay", "Sare", "Send it"):
+- FIRST, ask the student in native Telugu script for explicit permission to send their details to a human teacher:
+  "నేను మీ డిటైల్స్, టాపిక్ నేమ్, అండ్ ఇష్యూ సమ్మరీ ని హ్యూమన్ టీచర్ కి సెండ్ చేయాలా ఫోలో-అప్ కాల్ కోసం? ఓకేనా?"
+- IF CALLER SAYS YES ("Yes", "Sure", "Okay", "సరే", "సెండ్ చెయ్యి"):
   Call `create_escalation(...)` with permission_granted=True.
-  After calling it, speak the returned reference ID (e.g. ESC-4821) and explain honest next steps (e.g. "Mee request create chesenu brother! Reference ID: ESC-4821. A human teacher will review your topic and contact you within 24 hours.").
-- IF CALLER SAYS NO ("No", "Voddhu", "Don't send", "No thanks"):
-  DO NOT call `create_escalation`. Explicitly confirm in Tenglish that no support ticket was created ("Sare brother, request/ticket create cheyaledhu, no problem!"), respect their decision, and offer to help them directly.
+  After calling it, speak the returned reference ID (e.g. ESC-4821) and explain next steps in native Telugu script (e.g. "మీ రిక్వెస్ట్ క్రియేట్ చేశాను బ్రదర్! రిఫరెన్స్ ఐడి: ESC-4821. హ్యూమన్ టీచర్ 24 అవర్స్ లో కాంటాక్ట్ చేస్తారు.").
+- IF CALLER SAYS NO ("No", "వద్దు", "Don't send", "No thanks"):
+  DO NOT call `create_escalation`. Explicitly confirm in native Telugu script that no support ticket was created ("సరే బ్రదర్, రిక్వెస్ట్ క్రియేట్ చేయలేదు, నో ప్రాబ్లమ్!"), respect their decision, and offer to help them directly.
 
 DAY 5 TOOL RULES — LIVE QUIZ QUESTIONS
 
@@ -86,33 +94,32 @@ TOOL 0: `set_discussion_topic(topic)` — CALL THIS FIRST
 TOOL A: `fetch_practice_question(subject, level, topic)`
 - Call this whenever the student asks for a practice question, quiz, or exercise.
 - The tool auto-detects the topic — you don't need to pass it manually.
-  But if you know the topic, pass it to be safe.
 - CHAIN WITH DAY 4 MEMORY: Use student's saved `current_level` as the `level` param.
-- After fetching, announce the source:
-  • source='gemini-topic': "Ee question mee topic meeda specially generate chesanu!"
-  • source='live': "Ee question internet nundi live ga vasindi!"
-  • source='local': "Internet lo chinna issue, so naa local question ista!"
+- After fetching, announce the source in native Telugu script:
+  • source='gemini-topic': "ఈ క్వశ్చన్ మీ టాపిక్ మీద స్పెషల్ గా జనరేట్ చేశాను!"
+  • source='live': "ఈ క్వశ్చన్ ఇంటర్నెట్ నుండి లైవ్ గా వచ్చింది!"
+  • source='local': "ఇంటర్నెట్ లో చిన్న ఇష్యూ, సో నా లోకల్ క్వశ్చన్ ఇస్తాను!"
 - Read choices A, B, C, D aloud. Wait for student answer.
 
 TOOL B: `score_student_answer(student_answer, correct_answer)`
 - Call IMMEDIATELY after student answers the quiz question.
-- Use the returned `feedback` to respond to the student in Tenglish.
+- Use the returned `feedback` to respond to the student in native Telugu script.
 
 FAILURE HANDLING:
-- If source='local', say: "Internet lo chinna problem, but no worries! Local question ista."
-- Never go silent. Never invent a question. Always speak a result.
+- If source='local', say: "ఇంటర్నెట్ లో చిన్న ప్రాబ్లమ్, బట్ నో వర్రీస్! లోకల్ క్వశ్చన్ ఇస్తాను."
+- Never go silent. Never invent a question. Always speak a result in native Telugu script.
 
-DAY 4 MEMORY RULES
+DAY 4 MEMORY RULES (తెలుగు లిపి):
 
 HARD RULE 1 — CONSENT BEFORE SAVING:
 - Tool: `save_user_memory(user_id, name, language_preference, facts)`
-- NEVER save without asking first. After teaching, ask:
-  "Mee details & nerchukunna topics memory lo save cheskona next call kosam? Is it okay?"
-- YES ("Yes", "Sare", "Okay", "Sure"): call `save_user_memory`, confirm: "Super! Mee details save chesenu brother."
-- NO / UPFRONT REFUSAL ("No", "Voddhu", "Don't save", "Do NOT save my info"): drop data immediately, do NOT ask for consent again, and confirm clearly: "Sare brother, no problem! Your data will NOT be saved."
+- NEVER save without asking first. After teaching, ask in native Telugu script:
+  "మీ డిటైల్స్ & నేర్చుకున్న టాపిక్స్ మెమరీ లో సేవ్ చేసుకోనా నెక్స్ట్ కాల్ కోసం? ఓకేనా?"
+- YES ("Yes", "సరే", "Okay", "Sure"): call `save_user_memory`, confirm: "సూపర్! మీ డిటైల్స్ సేవ్ చేశాను బ్రదర్."
+- NO / UPFRONT REFUSAL ("No", "వద్దు", "Don't save"): drop data immediately, do NOT ask for consent again, and confirm clearly: "సరే బ్రదర్, నో ప్రాబ్లమ్! మీ డేటా సేవ్ చేయము."
 
 HARD RULE 2 — FORGET ME:
-- If caller says "Forget me" / "Delete my data" / "Nanu marchipo": call `forget_user_memory(user_id)`, confirm: "Done! Mee records delete chesenu brother."
+- If caller says "Forget me" / "Delete my data" / "నన్ను మర్చిపో": call `forget_user_memory(user_id)`, confirm: "డన్! మీ రికార్డ్స్ డిలీట్ చేశాను బ్రదర్."
 
 HARD RULE 3 — RETRIEVE MEMORY:
 - Tool: `lookup_user_memory(user_id)` — use it to fetch saved facts about a returning caller.
@@ -120,15 +127,15 @@ HARD RULE 3 — RETRIEVE MEMORY:
 FACTS STRUCTURE:
 - `current_level`: Class / Grade (e.g., "Class 10 Math")
 - `topics_covered`: List of topics (e.g., ["Photosynthesis", "Quadratic Equations"])
-- `mistakes_made`: Areas to improve (e.g., "Minus sign errors")
+- `mistakes_made`: Areas to improve
 
 TEACHING & EVALUATION FLOW:
-1. Explain topics simply in Tenglish, then offer to fetch a live practice question.
-2. Fetch question → ask student → score with score_student_answer → give warm feedback.
-3. Ask if they want another question or new topic, then ask consent to save progress.
+1. Explain topics simply in native Telugu script (తెలుగు లిపి), then offer to fetch a live practice question.
+2. Fetch question → ask student → score with score_student_answer → give warm feedback in native Telugu script.
+3. Ask if they want another question or new topic, then ask consent to save progress in native Telugu script.
 
 STYLE CONSTRAINTS:
-- ALWAYS speak in Telugu-English mix (Tenglish using English script).
+- ALWAYS write all Telugu words in NATIVE TELUGU SCRIPT (తెలుగు లిపి).
 - Keep responses short, spoken, and energetic (under 40 words per response).
 """
 
@@ -235,8 +242,9 @@ def _extract_topic_from_chat(chat_ctx) -> str:
 
 
 class Assistant(Agent):
-    def __init__(self) -> None:
+    def __init__(self, call_id: str = "") -> None:
         super().__init__(instructions=SYSTEM_PROMPT)
+        self.call_id: str = call_id
         # Tracks the most recently discussed educational topic this session
         self._current_topic: str = ""
 
@@ -290,6 +298,9 @@ class Assistant(Agent):
             follow_up_method=follow_up_method,
         )
 
+        if self.call_id:
+            update_call_progress(self.call_id, escalation_created=True)
+
         try:
             await dispatch_webhook(saved)
         except Exception as exc:
@@ -302,7 +313,7 @@ class Assistant(Agent):
             f"Reference ID: {ref_id}\n"
             f"Status: Open\n"
             f"Urgency: {urgency}\n\n"
-            f"Instructions for Agent: Speak in warm Tenglish. Tell the caller that their support ticket has been created with Reference ID '{ref_id}'. "
+            f"Instructions for Agent: Speak in warm native Telugu script (తెలుగు లిపి). Tell the caller that their support ticket has been created with Reference ID '{ref_id}'. "
             f"Explain clearly that a human teacher will review their topic ('{topic_info}') and contact them via '{follow_up_method}' within 24 hours. "
             f"Do NOT promise an instant call."
         )
@@ -315,7 +326,9 @@ class Assistant(Agent):
         'disconnect', 'voddhu', or clearly wants to stop the call.
         Always confirm goodbye before calling this tool.
         """
-        logger.info("hang_up tool called — ending the outbound call.")
+        logger.info("hang_up tool called — ending call gracefully.")
+        if self.call_id:
+            update_call_progress(self.call_id, graceful_hangup=True)
         try:
             job_ctx = get_job_context()
             await job_ctx.api.room.delete_room(
@@ -371,6 +384,8 @@ class Assistant(Agent):
             language_preference=language_preference,
             facts=facts_dict,
         )
+        if self.call_id:
+            update_call_progress(self.call_id, memory_saved=True)
         logger.info("Executed save_user_memory tool for %s (%s)", name, user_id)
         return f"Successfully saved user memory for {name} ({user_id}): {json.dumps(saved)}"
 
@@ -468,7 +483,7 @@ class Assistant(Agent):
             f"QUESTION: {result['question']}\n"
             f"CHOICES:{choices_labeled}\n\n"
             f"CORRECT_ANSWER (do NOT reveal yet): {result['correct_answer']}\n\n"
-            "Instructions: Read the question and choices aloud naturally in Tenglish. "
+            "Instructions: Read the question and choices aloud naturally in native Telugu script (తెలుగు లిపి). "
             "Wait for student answer. Then call score_student_answer with their response "
             f"and correct_answer='{result['correct_answer']}'"
         )
@@ -491,6 +506,8 @@ class Assistant(Agent):
                    'Quadratic Equations', 'Python loops', 'French Revolution').
         """
         self._current_topic = topic.strip()
+        if self.call_id:
+            update_call_progress(self.call_id, topic_discussed=self._current_topic)
         logger.info("Discussion topic set to: '%s'", self._current_topic)
         return f"Topic tracked as '{self._current_topic}'. Future practice questions will be about this topic."
 
@@ -508,7 +525,7 @@ class Assistant(Agent):
         and the correct answer from the fetched question.
 
         After calling this, use the returned 'feedback' to respond to the student warmly
-        in Tenglish. Update topics_covered and mistakes_made in your memory context.
+        in native Telugu script (తెలుగు లిపి). Update topics_covered and mistakes_made in your memory context.
 
         Args:
             student_answer: Exactly what the student said as their answer.
@@ -519,6 +536,8 @@ class Assistant(Agent):
             student_answer,
             correct_answer,
         )
+        if self.call_id:
+            update_call_progress(self.call_id, exercises_inc=1)
         result = score_student_answer(
             student_answer=student_answer, correct_answer=correct_answer
         )
@@ -528,7 +547,7 @@ class Assistant(Agent):
             f"  Correct answer: '{result['correct_answer']}'\n"
             f"  Is correct: {result['is_correct']}\n"
             f"  Feedback to speak: {result['feedback']}\n\n"
-            "Use the feedback above to respond to the student in Tenglish. "
+            "Use the feedback above to respond to the student in native Telugu script (తెలుగు లిపి). "
             "If incorrect, note the topic in mistakes_made for memory saving."
         )
 
@@ -544,7 +563,7 @@ def prewarm(proc: JobProcess):
 server.setup_fnc = prewarm
 
 
-@server.rtc_session()
+@server.rtc_session(agent_name=os.getenv("AGENT_NAME", "my-agent"))
 async def my_agent(ctx: JobContext):
     # Connect to LiveKit room immediately
     await ctx.connect()
@@ -556,104 +575,122 @@ async def my_agent(ctx: JobContext):
     # Detect outbound call: dispatch metadata is set to "outbound:<sip_uri>"
     dispatch_metadata: str = ctx.job.metadata or ""
     is_outbound = dispatch_metadata.startswith("outbound:")
+    channel = "SIP Outbound" if is_outbound else "Browser"
+    call_id = ctx.room.name or "session_unknown"
 
     # Make sure DB is initialized
     init_db()
 
-    # Set up voice AI session
-    session = AgentSession(
-        stt=deepgram.STT(
-            model="nova-3",
-            language="multi",
-        ),
-        llm=google.LLM(
-            model="gemini-3.5-flash-lite",
-        ),
-        tts=murf.TTS(
-            voice="Abhinav",
-            locale="en-IN",
-            style="Conversation",
-            tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
-            text_pacing=True,
-        ),
-        turn_detection=MultilingualModel(),
-        vad=ctx.proc.userdata["vad"],
-        min_endpointing_delay=0.1,
-        max_endpointing_delay=0.8,
-        preemptive_generation=True,
+    # Record initial call start
+    record_call_start(
+        call_id=call_id,
+        user_id="student",
+        caller_name="Student",
+        channel=channel,
     )
 
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-    )
+    try:
+        # Set up voice AI session
+        session = AgentSession(
+            stt=deepgram.STT(
+                model="nova-3",
+                language="multi",
+            ),
+            llm=google.LLM(
+                model="gemini-3.5-flash-lite",
+            ),
+            tts=murf.TTS(
+                voice="Abhinav",
+                locale="en-IN",
+                style="Conversation",
+                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
+                text_pacing=True,
+            ),
+            turn_detection=MultilingualModel(),
+            vad=ctx.proc.userdata["vad"],
+            min_endpointing_delay=0.1,
+            max_endpointing_delay=0.8,
+            preemptive_generation=True,
+        )
 
-    # ── Outbound call greeting ────────────────────────────────────────────────
-    # Outbound is harder: the student did NOT initiate this call and doesn't
-    # know who's calling. Rule: first two sentences must say WHO is calling,
-    # WHY, and HOW TO STOP.
-    if is_outbound:
-        greeting_instruction = """
-        OUTBOUND CALL — CRITICAL OPENING RULES:
+        await session.start(
+            agent=Assistant(call_id=call_id),
+            room=ctx.room,
+        )
 
-        This is an OUTBOUND call. The student did NOT initiate this.
-        Your FIRST TWO SENTENCES must always include:
-          1. WHO  — "Nenu EduVoice, mee AI tutor."
-          2. WHY  — "Daily practice reminder kosam call chesanu."
-          3. OPT-OUT — "'Stop' ante call end avutundi anytime."
+        # ── Outbound call greeting ────────────────────────────────────────────────
+        if is_outbound:
+            greeting_instruction = """
+            OUTBOUND CALL — CRITICAL OPENING RULES:
 
-        Example opening (adapt warmly, keep under 35 words total):
-        "Namaste! Nenu EduVoice, mee AI Voice Tutor. Daily practice reminder
-         kosam call chesanu. Anytime 'Stop' ante disconnect avutam.
-         Ready ga unnara? Eeroju em topic practice chesdam?"
+            This is an OUTBOUND call. The student did NOT initiate this.
+            Your FIRST TWO SENTENCES must always include (in native Telugu script):
+              1. WHO  — "నేను ఎడ్యువాయిస్, మీ AI ట్యూటర్."
+              2. WHY  — "డైలీ ప్రాక్టీస్ రిమైండర్ కోసం కాల్ చేశాను."
+              3. OPT-OUT — "'Stop' అంటే కాల్ డిస్కనెక్ట్ అవుతుంది."
 
-        After the opening, continue as normal EduVoice tutor.
-        If student says 'Stop', 'Bye', 'End', 'Voddhu', or wants to quit
-        — say a warm goodbye first, then call the hang_up tool.
-        """
-        logger.info("Outbound call — waiting for student to answer...")
-        # Wait for the SIP participant to actually pick up before speaking
-        await ctx.wait_for_participant()
-        logger.info("Outbound call — student answered, delivering greeting.")
-        await session.generate_reply(instructions=greeting_instruction)
-    else:
-        # ── Inbound call greeting (existing behaviour) ────────────────────────────
-        participant = await ctx.wait_for_participant()
-        user_id = (participant.identity or "student_1").strip().lower()
-        raw_name = participant.name or participant.identity or "student"
+            Example opening (adapt warmly in native Telugu script, keep under 35 words total):
+            "నమస్తే! నేను ఎడ్యువాయిస్, మీ AI వాయిస్ ట్యూటర్. డైలీ ప్రాక్టీస్ రిమైండర్
+             కోసం కాల్ చేశాను. మీరు ఎప్పుడైనా 'Stop' అంటే డిస్కనెక్ట్ అవుతాం.
+             రెడీగా ఉన్నారా? ఈరోజు ఏం టాపిక్ ప్రాక్టీస్ చేద్దాం?"
 
-        user_mem = get_user_memory(user_id)
-
-        if user_mem:
-            caller_name = user_mem.get("name") or raw_name
-            facts = user_mem.get("facts", {})
-            topics = facts.get("topics_covered", "your previous lessons")
-            if isinstance(topics, list):
-                topics = ", ".join(topics)
-
-            greeting_instruction = f"""
-            RETURNING CALLER FOUND!
-            User ID: '{user_id}'
-            Caller Name: '{caller_name}'
-            Saved Facts: {json.dumps(facts)}
-
-            Greet {caller_name} warmly in Tenglish (English script).
-            Example: "Namaste {caller_name}! Last time we discussed {topics}. Welcome back brother! Eeroju em topic nerchukundam?"
-            Keep greeting friendly, natural, and under 30 words.
+            After the opening, continue as normal EduVoice tutor in native Telugu script.
+            If student says 'Stop', 'Bye', 'End', 'వద్దు', or wants to quit
+            — say a warm goodbye first, then call the hang_up tool.
             """
+            logger.info("Outbound call — waiting for student to answer...")
+            await ctx.wait_for_participant()
+            logger.info("Outbound call — student answered, delivering greeting.")
+            await session.generate_reply(instructions=greeting_instruction)
         else:
-            caller_name = raw_name.title() if raw_name else "Student"
-            greeting_instruction = f"""
-            NEW CALLER JOINED!
-            User ID: '{user_id}'
-            Name: '{caller_name}'
+            # ── Inbound call greeting ───────────────────────────────────────────────
+            participant = await ctx.wait_for_participant()
+            user_id = (participant.identity or "student_1").strip().lower()
+            raw_name = participant.name or participant.identity or "student"
 
-            Greet {caller_name} warmly as EduVoice, their AI learning tutor.
-            Example: "Namaste {caller_name}! Nenu EduVoice, mee AI tutor. Eeroju em subject or topic nerchukundam?"
-            Keep greeting friendly, welcoming, and under 30 words.
-            """
+            # Record updated participant identity and caller name in call_logs
+            record_call_start(
+                call_id=call_id,
+                user_id=user_id,
+                caller_name=raw_name.title(),
+                channel=channel,
+            )
 
-        await session.generate_reply(instructions=greeting_instruction)
+            user_mem = get_user_memory(user_id)
+
+            if user_mem:
+                caller_name = user_mem.get("name") or raw_name
+                facts = user_mem.get("facts", {})
+                topics = facts.get("topics_covered", "your previous lessons")
+                if isinstance(topics, list):
+                    topics = ", ".join(topics)
+
+                greeting_instruction = f"""
+                RETURNING CALLER FOUND!
+                User ID: '{user_id}'
+                Caller Name: '{caller_name}'
+                Saved Facts: {json.dumps(facts)}
+
+                Greet {caller_name} warmly in NATIVE TELUGU SCRIPT (తెలుగు లిపి).
+                Example: "నమస్తే {caller_name}! లాస్ట్ టైమ్ మనం {topics} గురించి మాట్లాడుకున్నాం. వెల్కమ్ బ్యాక్ బ్రదర్! ఈరోజు ఏం టాపిక్ నేర్చుకుందాం?"
+                Keep greeting friendly, natural, and under 30 words.
+                """
+            else:
+                caller_name = raw_name.title() if raw_name else "Student"
+                greeting_instruction = f"""
+                NEW CALLER JOINED!
+                User ID: '{user_id}'
+                Name: '{caller_name}'
+
+                Greet {caller_name} warmly in NATIVE TELUGU SCRIPT (తెలుగు లిపి) as EduVoice, their AI learning tutor.
+                Example: "నమస్తే {caller_name}! నేను ఎడ్యువాయిస్, మీ AI ట్యూటర్. ఈరోజు ఏం సబ్జెక్ట్ ఆర్ టాపిక్ నేర్చుకుందాం?"
+                Keep greeting friendly, welcoming, and under 30 words.
+                """
+
+            await session.generate_reply(instructions=greeting_instruction)
+    finally:
+        # Record final call outcome and duration in call_logs
+        record_call_end(call_id=call_id)
 
 
 if __name__ == "__main__":

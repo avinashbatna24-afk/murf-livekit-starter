@@ -102,10 +102,30 @@ export function EscalationsDashboard({ onClose }: EscalationsDashboardProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-md">
-      <div className="relative flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/15 bg-[#0F0F23] shadow-2xl">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-hidden bg-black/85 p-3 backdrop-blur-md sm:p-6"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && onClose) {
+          onClose();
+        }
+      }}
+    >
+      <div className="relative flex max-h-[92vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-[#0F0F23] shadow-2xl">
+        {/* Floating Top-Right Close Button */}
+        {onClose && (
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close modal"
+            className="absolute top-4 right-4 z-50 flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-rose-600/90 text-base font-black text-white shadow-xl transition-all hover:scale-105 hover:bg-rose-500 active:scale-95"
+            title="Close Escalations Desk"
+          >
+            ✕
+          </button>
+        )}
+
         {/* Top Header */}
-        <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5">
+        <div className="flex items-center justify-between border-b border-white/10 bg-white/5 px-6 py-5 pr-14 sm:pr-16">
           <div>
             <div className="flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F97316] to-[#6366F1] text-xl shadow-lg">
@@ -271,7 +291,7 @@ export function EscalationsDashboard({ onClose }: EscalationsDashboardProps) {
                   <div>
                     <span className="font-bold text-white/50">📝 Issue Summary:</span>
                     <p className="mt-1 rounded-xl border border-white/5 bg-white/5 p-3 leading-relaxed font-medium text-white/90">
-                      "{t.issue_summary}"
+                      &quot;{t.issue_summary}&quot;
                     </p>
                   </div>
                   <div>

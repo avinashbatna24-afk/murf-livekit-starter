@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { CallAnalyticsDashboard } from '@/components/app/call-analytics-dashboard';
 import { EscalationsDashboard } from '@/components/app/escalations-dashboard';
 
 const SUBJECTS = [
@@ -145,6 +146,7 @@ export const WelcomeView = ({
 }: React.ComponentProps<'div'> & WelcomeViewProps) => {
   const [internalName, setInternalName] = useState('Ramesh');
   const [showEscalations, setShowEscalations] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const currentName = externalStudentName !== undefined ? externalStudentName : internalName;
   const updateName = (val: string) => {
@@ -274,15 +276,29 @@ export const WelcomeView = ({
         Speak in Telugu, English, or both — I remember your facts across calls!
       </p>
 
-      {/* Teacher Escalation Desk button */}
-      <button
-        type="button"
-        onClick={() => setShowEscalations(true)}
-        className="mb-6 flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-orange-300 backdrop-blur-sm transition-all hover:border-orange-500/50 hover:bg-orange-500/10 hover:text-white"
-      >
-        <span>📋</span>
-        <span>Teacher Escalation Desk</span>
-      </button>
+      {/* Dashboard & Escalation buttons */}
+      <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+        <button
+          type="button"
+          onClick={() => setShowAnalytics(true)}
+          className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-emerald-300 backdrop-blur-sm transition-all hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-white"
+        >
+          <span>📊</span>
+          <span>Call Analytics Dashboard</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setShowEscalations(true)}
+          className="flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-xs font-bold text-orange-300 backdrop-blur-sm transition-all hover:border-orange-500/50 hover:bg-orange-500/10 hover:text-white"
+        >
+          <span>📋</span>
+          <span>Teacher Escalation Desk</span>
+        </button>
+      </div>
+
+      {/* Analytics Dashboard Modal */}
+      {showAnalytics && <CallAnalyticsDashboard onClose={() => setShowAnalytics(false)} />}
 
       {/* Escalation Dashboard Modal */}
       {showEscalations && <EscalationsDashboard onClose={() => setShowEscalations(false)} />}

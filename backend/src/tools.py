@@ -418,9 +418,9 @@ def score_student_answer(student_answer: str, correct_answer: str) -> dict:
         is_correct = correct_clean in student_clean or student_clean in correct_clean
 
     feedback = (
-        f"Super! Correct answer brother! '{correct_answer}' — bilkul sahi!"
+        f"సూపర్! కరెక్ట్ ఆన్సర్ బ్రదర్! '{correct_answer}' — చాలా బాగా చెప్పారు!"
         if is_correct
-        else f"Chinna mistake brother. Correct answer is '{correct_answer}'. Em problem ledu, try chedam!"
+        else f"చిన్న మిస్టేక్ బ్రదర్. కరెక్ట్ ఆన్సర్ '{correct_answer}'. ఏం ప్రాబ్లెమ్ లేదు, మళ్ళీ ట్రై చేద్దాం!"
     )
 
     logger.info(
