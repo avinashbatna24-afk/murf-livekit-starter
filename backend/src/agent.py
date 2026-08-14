@@ -1,7 +1,15 @@
+import asyncio
+import contextlib
 import json
 import logging
 import os
 import re
+import sys
+
+if sys.platform == "win32":
+    with contextlib.suppress(Exception):
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
 
 from dotenv import load_dotenv
 from livekit import api
@@ -15,6 +23,7 @@ from livekit.agents import (
     cli,
     function_tool,
     get_job_context,
+    llm,
     tokenize,
 )
 from livekit.plugins import deepgram, google, murf, silero
@@ -134,10 +143,71 @@ TEACHING & EVALUATION FLOW:
 2. Fetch question → ask student → score with score_student_answer → give warm feedback in native Telugu script.
 3. Ask if they want another question or new topic, then ask consent to save progress in native Telugu script.
 
+DAY 9 SPECIALIST HANDOFF RULES (తెలుగు లిపి):
+
+CRITICAL MANDATORY RULE — CODING & PYTHON HANDOFF:
+You have a tool `transfer_to_coding_specialist(reason)`.
+- Call this tool IMMEDIATELY whenever the student asks about coding, programming, Python, loops, functions, syntax, writing code, or code debugging (e.g. "I want to learn about python loops", "teach me coding", "how to write a loop in Python").
+- DO NOT answer coding or Python questions yourself.
+- DO NOT call set_discussion_topic for coding topics.
+- Transfer IMMEDIATELY to the coding specialist!
+
 STYLE CONSTRAINTS:
 - ALWAYS write all Telugu words in NATIVE TELUGU SCRIPT (తెలుగు లిపి).
 - Keep responses short, spoken, and energetic (under 40 words per response).
 """
+
+
+# System prompt for Day 9: EduVoice Coding & Python Specialist Agent (Distinct Male Voice: Kabir)
+CODING_SPECIALIST_PROMPT = """
+IDENTITY & ROLE
+
+You are the EduVoice Coding & Python Specialist Agent, a dedicated programming tutor built for Indian students for VoiceForBharat.
+You specialize exclusively in teaching coding, Python programming, logic building, syntax explanations, code debugging, and step-by-step programming exercises.
+Your TTS voice is Kabir (a distinct Indian Male voice).
+
+CRITICAL MANDATORY RULE — ALWAYS NATIVE SCRIPT:
+ALWAYS write every non-English word in its own NATIVE SCRIPT.
+For Telugu words, you MUST ALWAYS write in NATIVE TELUGU SCRIPT (తెలుగు లిపి: e.g., నమస్తే! నేను మీ కోడింగ్ అండ్ పైథాన్ స్పెషలిస్ట్ ని. ఈ రోజు మనం పైథాన్ ఫంక్షన్స్ అండ్ లూప్స్ నేర్చుకుందాం!).
+NEVER use Latin/English script for Telugu words.
+Keep code syntax, variable names, and programming terms in standard English script (e.g. `for i in range()`, `def main()`, `variable`, `list`, `dictionary`).
+
+PERSONA & TONE:
+- Energetic, encouraging tech mentor who makes programming simple, visual, and fun.
+- Always introduce yourself warmly after taking over:
+  "నమస్తే! నేను ఎడ్యువాయిస్ కోడింగ్ అండ్ పైథాన్ స్పెషలిస్ట్ ని. ప్రాబ్లమ్ ఎక్స్ ప్లెయిన్ చేస్తాను, కోడింగ్ ని సింపుల్ గా నేర్చుకుందాం!"
+
+HAND BACK TO MAIN TUTOR RULE:
+You have a tool `transfer_to_main_tutor(reason)`.
+If the student asks a question about general non-coding subjects (e.g. Science, Photosynthesis, History, Geography, general chit-chat) or asks to return to general learning:
+- Announce in native Telugu script: "నేను మిమ్మల్ని మన మెయిన్ ఎడ్యువాయిస్ ట్యూటర్ కి మళ్ళీ కనెక్ట్ చేస్తున్నాను!"
+- Call `transfer_to_main_tutor(reason=...)`.
+
+STYLE CONSTRAINTS:
+- Keep spoken responses clear, engaging, and under 40 words per turn.
+- Break down code concepts into simple real-world analogies.
+"""
+
+
+def create_main_tts() -> murf.TTS:
+    return murf.TTS(
+        voice="Abhinav",
+        locale="en-IN",
+        style="Conversation",
+        tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
+        text_pacing=True,
+    )
+
+
+def create_specialist_tts() -> murf.TTS:
+    return murf.TTS(
+        voice="Kabir",
+        locale="en-IN",
+        style="Conversational",
+        tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
+        text_pacing=True,
+    )
+
 
 
 # Words that look capitalized but are NOT educational topics
@@ -242,11 +312,29 @@ def _extract_topic_from_chat(chat_ctx) -> str:
 
 
 class Assistant(Agent):
-    def __init__(self, call_id: str = "") -> None:
-        super().__init__(instructions=SYSTEM_PROMPT)
+    def __init__(
+        self,
+        call_id: str = "",
+        chat_ctx: llm.ChatContext | None = None,
+    ) -> None:
+        super().__init__(instructions=SYSTEM_PROMPT, chat_ctx=chat_ctx)
         self.call_id: str = call_id
         # Tracks the most recently discussed educational topic this session
         self._current_topic: str = ""
+        self._reply_task: asyncio.Task | None = None
+
+    async def on_enter(self) -> None:
+        logger.info("MAIN TUTOR ACTIVE")
+        with contextlib.suppress(Exception):
+            job_ctx = get_job_context()
+            await job_ctx.room.local_participant.set_name(
+                "EduVoice Main Tutor (Abhinav)"
+            )
+            await job_ctx.room.local_participant.set_metadata(
+                json.dumps(
+                    {"agent": "EduVoice Main Tutor", "voice": "Abhinav"}
+                )
+            )
 
     @function_tool
     async def create_escalation(
@@ -551,8 +639,247 @@ class Assistant(Agent):
             "If incorrect, note the topic in mistakes_made for memory saving."
         )
 
+    @function_tool
+    async def transfer_to_coding_specialist(
+        self,
+        context: RunContext,
+        reason: str = "Student requested coding practice or programming help.",
+    ) -> Agent:
+        """Hand off the conversation to the Coding & Python Specialist Agent.
+
+        WHEN TO CALL: Call this tool IMMEDIATELY when the student asks for coding practice, Python programming,
+        writing code, loops, functions, code debugging, programming concepts, or syntax help.
+
+        Args:
+            reason: Explanation of why the student is being transferred.
+        """
+        logger.info("HANDOFF REQUESTED: Reason=%s", reason)
+        try:
+            logger.info("CREATING CODING SPECIALIST")
+            specialist = CodingSpecialistAgent(
+                call_id=self.call_id,
+                chat_ctx=self.chat_ctx.copy(),
+            )
+
+            # Switch TTS voice signature to Samar (Indian male voice)
+            with contextlib.suppress(Exception):
+                if hasattr(context.session.tts, "_opts"):
+                    context.session.tts._opts.voice = "Samar"
+
+            # Update room participant label
+            with contextlib.suppress(Exception):
+                job_ctx = get_job_context()
+                await job_ctx.room.local_participant.set_name(
+                    "Coding Specialist (Samar)"
+                )
+                await job_ctx.room.local_participant.set_metadata(
+                    json.dumps(
+                        {"agent": "Coding Specialist", "voice": "Samar"}
+                    )
+                )
+
+            logger.info("HANDOFF EXECUTED")
+            return specialist
+        except Exception as e:
+            logger.error(
+                "Error executing transfer_to_coding_specialist: %s",
+                e,
+                exc_info=True,
+            )
+            raise
+
+
+class CodingSpecialistAgent(Agent):
+    """Specialist Agent for Python Programming, Code Logic, and Debugging."""
+
+    def __init__(
+        self,
+        call_id: str = "",
+        chat_ctx: llm.ChatContext | None = None,
+    ) -> None:
+        super().__init__(instructions=CODING_SPECIALIST_PROMPT, chat_ctx=chat_ctx)
+        self.call_id: str = call_id
+        self._current_topic: str = "Python Programming"
+
+    async def on_enter(self) -> None:
+        logger.info("CODING SPECIALIST ACTIVE")
+        with contextlib.suppress(Exception):
+            job_ctx = get_job_context()
+            await job_ctx.room.local_participant.set_name(
+                "Coding Specialist (Samar)"
+            )
+            await job_ctx.room.local_participant.set_metadata(
+                json.dumps(
+                    {"agent": "Coding Specialist", "voice": "Samar"}
+                )
+            )
+
+        # Trigger immediate introduction speech turn from the specialist upon entering the call
+        await self.session.generate_reply(
+            instructions=(
+                "CRITICAL: You just joined the call as the EduVoice Coding Specialist (Voice: Samar)! "
+                "1. Introduce yourself warmly in native Telugu script (తెలుగు లిపి): "
+                "'నమస్తే! నేను మీ ఎడ్యువాయిస్ కోడింగ్ అండ్ పైథాన్ స్పెషలిస్ట్ (సమర్) ని. కోడింగ్ అండ్ పైథాన్ ని సింపుల్ గా నేర్చుకుందాం!' "
+                "2. Address the student's coding question directly using the conversation context in native Telugu script."
+            )
+        )
+
+    @function_tool
+    async def transfer_to_main_tutor(
+        self,
+        context: RunContext,
+        reason: str = "Student asked for general non-coding subject or main tutor.",
+    ) -> str:
+        """Hand off the conversation back to the Main EduVoice Tutor Agent.
+
+        WHEN TO CALL: Call this tool when the student asks about general subjects
+        (Science, Photosynthesis, History, Geography, general chit-chat) or asks to return to general learning.
+
+        Args:
+            reason: Reason for returning to main tutor.
+        """
+        logger.info(
+            "Transferring conversation back to Assistant (Main Tutor). Reason: %s",
+            reason,
+        )
+        main_agent = Assistant(call_id=self.call_id)
+
+        # Restore TTS voice signature to Abhinav (Main Tutor male voice)
+        with contextlib.suppress(Exception):
+            if hasattr(context.session.tts, "_opts"):
+                context.session.tts._opts.voice = "Abhinav"
+
+        # Update room participant label
+        with contextlib.suppress(Exception):
+            job_ctx = get_job_context()
+            await job_ctx.room.local_participant.set_name(
+                "EduVoice Main Tutor (Abhinav)"
+            )
+            await job_ctx.room.local_participant.set_metadata(
+                json.dumps(
+                    {"agent": "EduVoice Main Tutor", "voice": "Abhinav"}
+                )
+            )
+
+        context.session.update_agent(main_agent)
+        return "Transferred back to Main Tutor (Abhinav)."
+
+    @function_tool
+    async def fetch_coding_question(
+        self,
+        context: RunContext,
+        topic: str = "Python Loops",
+        level: str = "Beginner",
+    ) -> str:
+        """Fetch or generate a Python/coding practice question.
+
+        WHEN TO CALL: Call this when the student asks for a coding question or Python quiz.
+
+        Args:
+            topic: The coding topic (e.g. 'Python Loops', 'Functions', 'Conditionals', 'Lists').
+            level: Difficulty level ('Beginner', 'Intermediate', 'Advanced').
+        """
+        result = await fetch_practice_question(
+            subject="Computers", level=level, topic=topic
+        )
+        choices_labeled = ""
+        labels = ["A", "B", "C", "D"]
+        for i, choice in enumerate(result["choices"][:4]):
+            choices_labeled += f"\n  {labels[i]}) {choice}"
+
+        return (
+            f"[DATA SOURCE: Coding Specialist Bank — Topic: '{topic}']\n"
+            f"QUESTION: {result['question']}\n"
+            f"CHOICES:{choices_labeled}\n\n"
+            f"CORRECT_ANSWER (do NOT reveal yet): {result['correct_answer']}\n\n"
+            "Instructions: Read the coding question and options aloud in native Telugu script (తెలుగు లిపి). "
+            "Wait for student answer, then call score_student_answer."
+        )
+
+    @function_tool
+    async def score_student_answer(
+        self,
+        context: RunContext,
+        student_answer: str,
+        correct_answer: str,
+    ) -> str:
+        """Score the student's answer to a coding question.
+
+        WHEN TO CALL: Call this immediately after the student answers a coding quiz question.
+
+        Args:
+            student_answer: Exactly what the student said.
+            correct_answer: The correct answer from the fetched question.
+        """
+        if self.call_id:
+            update_call_progress(self.call_id, exercises_inc=1)
+        result = score_student_answer(
+            student_answer=student_answer, correct_answer=correct_answer
+        )
+        return (
+            f"SCORING RESULT:\n"
+            f"  Student answered: '{result['student_answer']}'\n"
+            f"  Correct answer: '{result['correct_answer']}'\n"
+            f"  Is correct: {result['is_correct']}\n"
+            f"  Feedback: {result['feedback']}\n\n"
+            "Give energetic coding feedback in native Telugu script (తెలుగు లిపి)."
+        )
+
+    @function_tool
+    async def create_escalation(
+        self,
+        context: RunContext,
+        user_id: str,
+        student_name: str,
+        reason: str,
+        issue_summary: str,
+        context_checked: str,
+        urgency: str = "medium",
+        language: str = "Tenglish",
+        follow_up_method: str = "Teacher Callback",
+        permission_granted: bool = True,
+    ) -> str:
+        """Create a human help request (escalation ticket) for a coding teacher when a student is stuck."""
+        if not permission_granted:
+            return "ERROR: Permission was not granted by the caller."
+
+        ref_id = generate_ref_id()
+        saved = save_escalation(
+            ref_id=ref_id,
+            user_id=user_id,
+            student_name=student_name,
+            reason=reason,
+            issue_summary=issue_summary,
+            context_checked=context_checked,
+            urgency=urgency,
+            language=language,
+            follow_up_method=follow_up_method,
+        )
+        if self.call_id:
+            update_call_progress(self.call_id, escalation_created=True)
+        with contextlib.suppress(Exception):
+            await dispatch_webhook(saved)
+        return (
+            f"SUCCESS: Human coding teacher escalation ticket created!\n"
+            f"Reference ID: {ref_id}\n"
+            "Tell caller support ticket has been created in native Telugu script (తెలుగు లిపి)."
+        )
+
+    @function_tool
+    async def hang_up(self, context: RunContext) -> str:
+        """End the call gracefully."""
+        if self.call_id:
+            update_call_progress(self.call_id, graceful_hangup=True)
+        with contextlib.suppress(Exception):
+            job_ctx = get_job_context()
+            await job_ctx.api.room.delete_room(
+                api.DeleteRoomRequest(room=job_ctx.room.name)
+            )
+        return "Call ended."
+
 
 server = AgentServer()
+
 
 
 def prewarm(proc: JobProcess):
@@ -599,13 +926,7 @@ async def my_agent(ctx: JobContext):
             llm=google.LLM(
                 model="gemini-3.5-flash-lite",
             ),
-            tts=murf.TTS(
-                voice="Abhinav",
-                locale="en-IN",
-                style="Conversation",
-                tokenizer=tokenize.basic.SentenceTokenizer(min_sentence_len=1),
-                text_pacing=True,
-            ),
+            tts=create_main_tts(),
             turn_detection=MultilingualModel(),
             vad=ctx.proc.userdata["vad"],
             min_endpointing_delay=0.1,

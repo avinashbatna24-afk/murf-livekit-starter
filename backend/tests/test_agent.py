@@ -108,3 +108,76 @@ async def test_refuses_harmful_request() -> None:
 
         # Ensures there are no function calls or other unexpected events
         result.expect.no_more_events()
+
+
+@pytest.mark.asyncio
+async def test_main_agent_handles_general_question() -> None:
+    """Verify normal general science questions stay with the main agent without handoff."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+        result = await session.run(
+            user_input="Can you explain what Photosynthesis is in simple terms?"
+        )
+
+        func_calls = [
+            e
+            for e in result.events
+            if getattr(getattr(e, "item", None), "name", None)
+            == "transfer_to_coding_specialist"
+        ]
+        assert (
+            len(func_calls) == 0
+        ), "General question should NOT trigger specialist handoff tool"
+
+
+@pytest.mark.asyncio
+async def test_main_agent_handoff_to_coding_specialist() -> None:
+    """Verify that coding/Python requests trigger transfer_to_coding_specialist handoff tool."""
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(Assistant())
+        result = await session.run(
+            user_input="I want to learn Python coding and write loops. Can you connect me to a coding specialist?"
+        )
+
+        func_calls = [
+            e
+            for e in result.events
+            if getattr(getattr(e, "item", None), "name", None)
+            == "transfer_to_coding_specialist"
+        ]
+        assert (
+            len(func_calls) > 0
+        ), f"Expected transfer_to_coding_specialist tool call, got events: {result.events}"
+
+
+@pytest.mark.asyncio
+async def test_coding_specialist_handoff_back_to_main_agent() -> None:
+    """Verify that CodingSpecialistAgent hands back to main agent when asked about non-coding topics."""
+    from agent import CodingSpecialistAgent
+
+    async with (
+        _llm() as llm,
+        AgentSession(llm=llm) as session,
+    ):
+        await session.start(CodingSpecialistAgent())
+        result = await session.run(
+            user_input="I am done with coding. Please switch me back to the main tutor for general science lessons."
+        )
+
+        func_calls = [
+            e
+            for e in result.events
+            if getattr(getattr(e, "item", None), "name", None)
+            == "transfer_to_main_tutor"
+        ]
+        assert (
+            len(func_calls) > 0
+        ), f"Expected transfer_to_main_tutor tool call, got events: {result.events}"
+
+

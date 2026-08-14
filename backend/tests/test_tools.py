@@ -30,7 +30,7 @@ from tools import (
 def test_score_exact_correct():
     result = score_student_answer("Carbon dioxide", "Carbon dioxide")
     assert result["is_correct"] is True
-    assert "Correct" in result["feedback"]
+    assert "కరెక్ట్" in result["feedback"] or "Correct" in result["feedback"]
 
 
 def test_score_case_insensitive():
@@ -48,7 +48,8 @@ def test_score_wrong_answer():
     result = score_student_answer("Oxygen", "Carbon dioxide")
     assert result["is_correct"] is False
     assert (
-        "mistake" in result["feedback"].lower()
+        "మిస్టేక్" in result["feedback"]
+        or "mistake" in result["feedback"].lower()
         or "Correct answer" in result["feedback"]
     )
 

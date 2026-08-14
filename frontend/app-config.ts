@@ -59,7 +59,7 @@ export const APP_CONFIG_DEFAULTS: AppConfig = {
   audioVisualizerColorShift: 0.4,
 
   // ── Agent dispatch ──────────────────────────────────────────────────
-  agentName: process.env.AGENT_NAME ?? undefined,
+  agentName: process.env.NEXT_PUBLIC_AGENT_NAME || process.env.AGENT_NAME || 'my-agent',
 
   // ── LiveKit Cloud Sandbox ───────────────────────────────────────────
   sandboxId: undefined,
